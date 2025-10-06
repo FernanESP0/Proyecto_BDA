@@ -1,0 +1,6 @@
+dbms=postgresql
+ip=localhost
+port=5432
+user=pablo.fernandez.aulet
+password=DB140305
+dbname=DBBDA
