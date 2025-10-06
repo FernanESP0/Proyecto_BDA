@@ -141,7 +141,7 @@ def check_and_fix_1st_and_2nd_BR(flights_src):
     aircraft_flights = {}
     for row in flights_src:
         if not row['cancelled']:  # consider only non-cancelled flights
-            aircraft_id = row['aircraft_reg_code']
+            aircraft_id = row['aircraftregistration']
             aircraft_flights.setdefault(aircraft_id, []).append(row)
 
     ignored_flights = set()
@@ -158,12 +158,12 @@ def check_and_fix_1st_and_2nd_BR(flights_src):
             if to_utc(f1['scheduledarrival']) > to_utc(f2['scheduleddeparture']):
                 logging.info(
                     f"Overlapping flights detected for aircraft {aircraft_id}: "
-                    f"Ignoring flight {f1['flight_id']}."
+                    f"Ignoring flight {f1['id']}."
                 )
-                ignored_flights.add(f1['flight_id'])  # Ignore the first flight
+                ignored_flights.add(f1['id'])  # Ignore the first flight
 
     # Return only valid flights
-    cleaned_flights = [f for f in flights_src if f['flight_id'] not in ignored_flights]
+    cleaned_flights = [f for f in flights_src if f['id'] not in ignored_flights]
 
     return cleaned_flights
 
@@ -182,8 +182,8 @@ def check_and_fix_3rd_BR(post_flights_report, aircrafts_src):
         aircraft_id = row['aircraftregistration']
         if aircraft_id not in aircraft_ids:
             logging.warning(f"Aircraft {aircraft_id} not found in aircrafts source.")
-            ignored_reports.append(row)
+            ignored_reports.add(row['pfrid'])
 
     # Return only valid reports
-    cleaned_reports = [r for r in post_flights_report if r not in ignored_reports]
+    cleaned_reports = [r for r in post_flights_report if r['pfrid'] not in ignored_reports]
     return cleaned_reports
