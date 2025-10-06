@@ -123,6 +123,7 @@ def to_utc(dt):
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
+
 def check_and_fix_1st_and_2nd_BR(flights_src):
     """
     1st BR: actualArrival must be after actualDeparture (swap if needed)
@@ -146,30 +147,43 @@ def check_and_fix_1st_and_2nd_BR(flights_src):
     ignored_flights = set()
 
     for aircraft_id, flights in aircraft_flights.items():
-        # Ordenar por hora de salida programada
+        # Sort flights by scheduled departure time
         flights.sort(key=lambda x: to_utc(x['scheduleddeparture']))
 
         for i in range(len(flights) - 1):
             f1 = flights[i]
             f2 = flights[i + 1]
 
-            # Detectar solapamiento
+            # Check for overlap
             if to_utc(f1['scheduledarrival']) > to_utc(f2['scheduleddeparture']):
                 logging.info(
                     f"Overlapping flights detected for aircraft {aircraft_id}: "
                     f"Ignoring flight {f1['flight_id']}."
                 )
-                ignored_flights.add(f1['flight_id'])  # marcar vuelo ignorado
+                ignored_flights.add(f1['flight_id'])  # Ignore the first flight
 
-    # Devolver solo vuelos válidos (no ignorados)
+    # Return only valid flights
     cleaned_flights = [f for f in flights_src if f['flight_id'] not in ignored_flights]
 
     return cleaned_flights
 
 
-def check_and_fix_3rd_BR(post_flights_report):
+def check_and_fix_3rd_BR(post_flights_report, aircrafts_src):
     """
     Check and fix the 3rd Business Rule (BR) in the flights data.
     3rd BR: The aircraft registration in a post flight report must be an aircraft (Fix: Ignore the report, but record the row in a log file)
     """
+
+    aircraft_ids = {row['aircraft_reg_code']: row for row in aircrafts_src}
+
+    ignored_reports = set()
     
+    for row in post_flights_report:
+        aircraft_id = row['aircraftregistration']
+        if aircraft_id not in aircraft_ids:
+            logging.warning(f"Aircraft {aircraft_id} not found in aircrafts source.")
+            ignored_reports.append(row)
+
+    # Return only valid reports
+    cleaned_reports = [r for r in post_flights_report if r not in ignored_reports]
+    return cleaned_reports
