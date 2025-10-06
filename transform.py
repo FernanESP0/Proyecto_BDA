@@ -1,6 +1,7 @@
 from tqdm import tqdm # type: ignore
 import logging
 import pandas as pd
+from datetime import timezone
 
 
 # Configure logging
@@ -43,6 +44,8 @@ def get_reporters(reporter_src, maintenance_personnel_src):
     the SQL source.
     """
     reporters_seen = set()
+    
+    # First, process maintenance personnel (MAREP)
     for row in maintenance_personnel_src:
         yield {
             'Reporter_Code': row['reporteurid'],
@@ -50,6 +53,8 @@ def get_reporters(reporter_src, maintenance_personnel_src):
             'Reporter_Class': 'MAREP'
         }
         reporters_seen.add(row['reporteurid'])
+        
+    # Then, process pilots (PIREP), avoiding duplicates
     for row in reporter_src:
         if row['reporteurid'] not in reporters_seen:
             reporters_seen.add(row['reporteurid'])
@@ -60,20 +65,111 @@ def get_reporters(reporter_src, maintenance_personnel_src):
         }
 
 
-def get_date(flights_src):
+def get_dates(flights_src, technical_logbooks_src):
     """
     Generate unique records for the Day and Month dimension
-    from the scheduleddeparture dates.
+    from the scheduled departure and flight dates.
     """
-    seen = set()
+    dates_seen = set()
+
+    # Process the dates from the flights
     for row in flights_src:
-        date = build_dateCode(row['scheduleddeparture']) 
-        month_num = date.month
-        year = date.year  
-        if month_num not in seen:
-            seen.add(month_id)
+        date = build_dateCode(row['scheduleddeparture'])  # e.g. '2025-10-06'
+        year = int(date[:4])
+        month_num = int(date[5:7])
+        day_num = int(date[8:10])
+
+        if date not in dates_seen:
+            dates_seen.add(date)
             yield {
-                'Year': date.year,
-                'Month_Num': date.month
+                'Day_Num': day_num,
+                'Month_Num': month_num,
+                'Year': year
             }
 
+    # Finally, process the dates from the technical logbooks, avoiding duplicates
+    for row in technical_logbooks_src:
+        date = build_dateCode(row['flightdate'])
+        year = int(date[:4])
+        month_num = int(date[5:7])
+        day_num = int(date[8:10])
+
+        if date not in dates_seen:
+            dates_seen.add(date)
+            yield {
+                'Day_Num': day_num,
+                'Month_Num': month_num,
+                'Year': year
+            }
+
+
+def get_flights_operations_daily(flights_src):
+    
+    
+
+
+
+
+def get_aircrafts_monthly_snapshot(flights_src):
+    
+    
+    
+
+def to_utc(dt):
+    """Ensure datetime is timezone-aware and in UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+def check_and_fix_1st_and_2nd_BR(flights_src):
+    """
+    1st BR: actualArrival must be after actualDeparture (swap if needed)
+    2nd BR: Two non-cancelled flights of the same aircraft cannot overlap (ignore the first)
+    """
+    # --- 1st BR ---
+    for row in flights_src:
+        arr = to_utc(row['actualarrival'])
+        dep = to_utc(row['actualdeparture'])
+        if arr and dep and arr < dep:
+            logging.info(f"Swapping actualArrival and actualDeparture for flight {row['flight_id']}.")
+            row['actualarrival'], row['actualdeparture'] = row['actualdeparture'], row['actualarrival']
+
+    # --- 2nd BR ---
+    aircraft_flights = {}
+    for row in flights_src:
+        if not row['cancelled']:  # consider only non-cancelled flights
+            aircraft_id = row['aircraft_reg_code']
+            aircraft_flights.setdefault(aircraft_id, []).append(row)
+
+    ignored_flights = set()
+
+    for aircraft_id, flights in aircraft_flights.items():
+        # Ordenar por hora de salida programada
+        flights.sort(key=lambda x: to_utc(x['scheduleddeparture']))
+
+        for i in range(len(flights) - 1):
+            f1 = flights[i]
+            f2 = flights[i + 1]
+
+            # Detectar solapamiento
+            if to_utc(f1['scheduledarrival']) > to_utc(f2['scheduleddeparture']):
+                logging.info(
+                    f"Overlapping flights detected for aircraft {aircraft_id}: "
+                    f"Ignoring flight {f1['flight_id']}."
+                )
+                ignored_flights.add(f1['flight_id'])  # marcar vuelo ignorado
+
+    # Devolver solo vuelos válidos (no ignorados)
+    cleaned_flights = [f for f in flights_src if f['flight_id'] not in ignored_flights]
+
+    return cleaned_flights
+
+
+def check_and_fix_3rd_BR(post_flights_report):
+    """
+    Check and fix the 3rd Business Rule (BR) in the flights data.
+    3rd BR: The aircraft registration in a post flight report must be an aircraft (Fix: Ignore the report, but record the row in a log file)
+    """
+    
