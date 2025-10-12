@@ -87,11 +87,12 @@ class DW:
                     );
 
                     CREATE TABLE Logbooks (
-                        Day_ID      INT NOT NULL,
+                        Month_ID    INT NOT NULL,
                         Aircraft_ID INT NOT NULL,
                         Reporter_ID INT NOT NULL,
-                        PRIMARY KEY (Day_ID, Aircraft_ID, Reporter_ID),
-                        FOREIGN KEY (Day_ID) REFERENCES Day(Day_ID),
+                        Log_Count   INT NOT NULL CHECK (Log_Count > 0),
+                        PRIMARY KEY (Month_ID, Aircraft_ID, Reporter_ID),
+                        FOREIGN KEY (Month_ID) REFERENCES Month(Month_ID),
                         FOREIGN KEY (Aircraft_ID) REFERENCES Aircraft(Aircraft_ID),
                         FOREIGN KEY (Reporter_ID) REFERENCES Reporter(Reporter_ID)
                     );
@@ -166,8 +167,8 @@ class DW:
 
         self.logbook_fact = FactTable(
             name='Logbooks',
-            keyrefs=['Day_ID', 'Aircraft_ID', 'Reporter_ID'],
-            measures=[]  # table without measures, only references
+            keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
+            measures=['Log_Count']
         )
 
 
