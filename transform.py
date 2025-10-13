@@ -118,13 +118,13 @@ def _extract_dates(flights_src: SQLSource, technical_logbooks_src: SQLSource, ma
     """Helper generator to yield all unique date objects from different sources."""
     # chain() efficiently combines multiple iterators
     for row in chain(flights_src, technical_logbooks_src, maintenance_src):
+        # This condition will be true for rows from flights_src OR maintenance_src
         if 'scheduleddeparture' in row and row['scheduleddeparture']:
             yield row['scheduleddeparture']
-        elif 'reportingdate' in row and row['reportingdate']:
-            yield row['reportingdate']
-        # Use a more generic name for maintenance start date
-        elif 'maintenance_start_date' in row and row['maintenance_start_date']:
-            yield row['maintenance_start_date']
+        # This condition will only be evaluated for rows from other sources,
+        # like technical_logbooks_src.
+        elif 'executiondate' in row and row['executiondate']:
+            yield row['executiondate']
 
 
 def get_dates(flights_src: SQLSource, technical_logbooks_src: SQLSource, maintenance_src: SQLSource) -> Iterator[Dict[str, Any]]:
@@ -165,11 +165,11 @@ def get_flights_operations_daily(
     # Pre-aggregate total delay minutes by delay code.
     # This avoids a slow, nested loop. We create a lookup dictionary first.
     print("Pre-aggregating delay information for performance...")
-    tdm_lookup: Dict[str, int] = {}
+    tdm_lookup: Dict[Tuple[int, str, str], int] = {}
     for row in tqdm(operation_interruption_src, desc="Processing Delays"):
         delay_code = row['delaycode']
         # Sum the duration for each delay code
-        tdm_lookup[delay_code] = tdm_lookup.get(delay_code, 0) + calculate_minutes(str(row['duration']))
+        tdm_lookup[(delay_code, row['aircraftregistration'], build_dateCode(row['scheduleddeparture']))] = tdm_lookup.get((delay_code, row['aircraftregistration'], build_dateCode(row['scheduleddeparture'])), 0) + calculate_minutes(str(row['duration']))
 
     # Dictionary to aggregate final measures for the fact table
     daily_aggregates: Dict[Tuple[int, int], Dict[str, float]] = {}
@@ -206,7 +206,7 @@ def get_flights_operations_daily(
                 # This flight counts as one delayed flight.
                 delayed_flight_count = 1
                 # Use the pre-aggregated lookup to get the total minutes for this code.
-                total_delay_minutes = tdm_lookup.get(row['delaycode'], 0)
+                total_delay_minutes = tdm_lookup.get((row['delaycode'], row['aircraftregistration'], build_dateCode(row['scheduleddeparture'])), 0)
 
             # 4. Add all measures to the daily aggregates
             daily_aggregates[fact_key]['FH'] += fh
@@ -244,8 +244,8 @@ def get_aircrafts_monthly_snapshot(
     for row in tqdm(maintenance_src, desc="Processing Maintenance"):
         try:
             # Assumes maintenance records have start and end timestamps
-            start_date = row['maintenance_start_date']
-            end_date = row['maintenance_end_date']
+            start_date = row['scheduleddeparture']
+            end_date = row['scheduledarrival']
             
             _, month_num, year = get_date(build_dateCode(start_date))
             month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
@@ -304,7 +304,7 @@ def get_logbooks(
     print("Aggregating logbook entries...")
     for row in tqdm(technical_logbooks_src, desc="Processing Logbooks"):
         try:
-            rep_date = row['reportingdate']
+            rep_date = row['executiondate']
             _, month_num, year = get_date(build_dateCode(rep_date))
             month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
             aircraft_id = aircraft_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
