@@ -34,9 +34,9 @@ class DW:
                     );
 
                     CREATE TABLE Month (
-                        Month_ID  INT PRIMARY KEY, -- surrogate key
-                        Month_Num INT NOT NULL CHECK (Month_Num BETWEEN 1 AND 12),
-                        Year      INT NOT NULL,
+                        Month_ID   INT PRIMARY KEY, -- surrogate key
+                        Month_Num  INT NOT NULL CHECK (Month_Num BETWEEN 1 AND 12),
+                        Year       INT NOT NULL,
                         UNIQUE (Month_Num, Year)     
                     );
 
@@ -78,7 +78,6 @@ class DW:
                         Month_ID    INT NOT NULL,
                         Aircraft_ID INT NOT NULL,
                         ADIS        INT NOT NULL CHECK (ADIS > 0),
-                        ADOS        INT NOT NULL CHECK (ADOS > 0),
                         ADOSS       INT NOT NULL CHECK (ADOSS > 0),
                         ADOSU       INT NOT NULL CHECK (ADOSU > 0),
                         PRIMARY KEY (Month_ID, Aircraft_ID),
@@ -106,7 +105,6 @@ class DW:
         self.conn_pygrametl = pygrametl.ConnectionWrapper(self.conn_duckdb)
 
         # ======================================================================================================= Dimension and fact table objects
-        # TODO: Declare the dimensions and facts for pygrametl
         
         # =======================================================================================================
         # Dimensions
@@ -162,7 +160,7 @@ class DW:
         self.aircraft_monthly_fact = FactTable(
             name='Aircraft_Monthly_Summary',
             keyrefs=['Month_ID', 'Aircraft_ID'],
-            measures=['ADIS', 'ADOS', 'ADOSS', 'ADOSU']
+            measures=['ADIS', 'ADOSS', 'ADOSU']
         )
 
         self.logbook_fact = FactTable(
@@ -195,3 +193,7 @@ class DW:
         self.conn_pygrametl.commit()
         self.conn_pygrametl.close()
 
+
+if __name__ == '__main__':
+    dw = DW(create=True)
+    dw.close()

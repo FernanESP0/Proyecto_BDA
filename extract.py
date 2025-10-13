@@ -31,8 +31,6 @@ except Exception as e:
     raise ValueError(f"Database configuration file '{path.absolute()}' not properly formatted (check file 'db_conf.example.txt'.")
 
 
-# TODO: Implement here all the extracting functions
-
 # ============================================================
 #  Extracting functions of CSV files
 # ============================================================
