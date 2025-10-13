@@ -193,7 +193,3 @@ class DW:
         self.conn_pygrametl.commit()
         self.conn_pygrametl.close()
 
-
-if __name__ == '__main__':
-    dw = DW(create=True)
-    dw.close()
