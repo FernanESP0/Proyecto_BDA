@@ -45,10 +45,8 @@ def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None
 
 def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
     """
-    Loads date data into the snowflaked Month and Day dimension tables.
-
-    This function first ensures the month exists using .ensure() to get its
-    surrogate key, then uses that key to insert the specific day record.
+    Loads date data into the snowflaked Month and Day dimension tables, ensuring
+    referential integrity between them with snowflaking.
 
     Args:
         dw: The pygrametl data warehouse connection object.
@@ -56,12 +54,7 @@ def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
     """
     print("Loading snowflaked dimension: Month and Day...")
     for row in tqdm(date_iterator, desc="Dim: Date (Month/Day)"):
-        date_record = {
-            'Day_Num': row['Day_Num'],
-            'Month_Num': row['Month_Num'],
-            'Year': row['Year']
-        }
-        dw.date_dim.insert(date_record)
+        dw.date_dim.ensure(row)
 
 
 # =============================================================================
