@@ -38,13 +38,20 @@ except Exception as e:
 # ============================================================
 
 def get_aircraft_manufacturer_info():
+    """
+    Extract aircraft manufacturer information from the provided CSV file.
+    """
     return CSVSource(
         open('aircraft_manufacturerinfo-lookup.csv', 'r', encoding='utf-8'),
         delimiter=',',
         asdict=True
     )
 
+
 def get_maintenance_personnel():
+    """ 
+    Extract maintenance personnel information from the provided CSV file.
+    """
     return CSVSource(
         open('maintenance_personnel.csv', 'r', encoding='utf-8'),
         delimiter=',',
@@ -55,8 +62,48 @@ def get_maintenance_personnel():
 # Extracting function of PostgreSQL
 # ============================================================
 
-def get_technical_logbooks(): 
-    return SQLSource(conn, 'SELECT * FROM "AIMS".technical_logbooks', asdict=True)
+
+def get_reporters_info(): 
+    """
+    Extract technical logbook information from the PostgreSQL source. In specific,
+    extract only the reporter IDs from the table "AMOS".technicallogbookorders.
+    """
+    return SQLSource(conn, 'SELECT executionplace, reporteurid FROM "AMOS".technicallogbookorders', asdict=True)
+
+
+def get_reporting_dates():
+    """
+    Extract technical logbook reporting dates from the PostgreSQL source. 
+    """
+    return SQLSource(conn, 'SELECT reportingdate FROM "AMOS".technicallogbookorders', asdict=True)
+
+
+def get_flights():
+    """
+    Extract flight information from the PostgreSQL source. 
+    """
+    return SQLSource(conn, 'SELECT * FROM "AIMS".flights', asdict=True)
+
+
+def get_flight_dates():
+    """
+    Extract flight departure dates from the PostgreSQL source. 
+    """
+    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights', asdict=True)
+
+
+def get_postflightreports():
+    """
+    Extract post flight report information from the PostgreSQL source. 
+    """
+    return SQLSource(conn, 'SELECT * FROM "AMOS".postflightreports', asdict=True)
+
+
+def get_delays_info():
+    """
+    Extract delay information from the PostgreSQL source. 
+    """
+    return SQLSource(conn, 'SELECT duration, delaycode FROM "AMOS".operationinterruption', asdict=True)
 
 
 # =======================================================================================================
@@ -71,6 +118,7 @@ def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
             aircrafts[manufacturer] = []
         aircrafts[manufacturer].append(aircraft_id)
     return aircrafts
+
 
 def query_utilization_baseline():
     aircrafts = get_aircrafts_per_manufacturer()
