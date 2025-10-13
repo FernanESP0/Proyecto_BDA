@@ -69,6 +69,13 @@ def get_maintenance_personnel() -> CSVSource:
 # ============================================================
 
 
+def get_logbooks_info() -> SQLSource:
+    """
+    Extract all technical logbook entries necessary from the PostgreSQL source.
+    """
+    return SQLSource(conn, 'SELECT aircraftregistration, executiondate, reporteurid FROM "AMOS".technicallogbookorders', asdict=True)
+
+
 def get_reporters_info() -> SQLSource: 
     """
     Extract technical logbook information from the PostgreSQL source. In specific,
@@ -88,7 +95,7 @@ def get_flights() -> SQLSource:
     """
     Extract flight information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT * FROM "AIMS".flights', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights', asdict=True)
 
 
 def get_flight_dates() -> SQLSource:
@@ -96,6 +103,20 @@ def get_flight_dates() -> SQLSource:
     Extract flight departure dates from the PostgreSQL source. 
     """
     return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights', asdict=True)
+
+
+def get_maintenance_info() -> SQLSource:
+    """
+    Extract maintenance information from the PostgreSQL source.
+    """
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance', asdict=True)
+
+
+def get_maintenance_dates() -> SQLSource:
+    """
+    Extract maintenance dates from the PostgreSQL source.
+    """
+    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".maintenance', asdict=True)
 
 
 def get_postflightreports() -> SQLSource:
@@ -109,7 +130,7 @@ def get_delays_info() -> SQLSource:
     """
     Extract delay information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT duration, delaycode FROM "AMOS".operationinterruption', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, duration, delaycode FROM "AMOS".operationinterruption', asdict=True)
 
 
 # =======================================================================================================

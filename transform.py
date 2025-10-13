@@ -115,25 +115,25 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
             }
 
 
-def _extract_dates(flights_src: SQLSource, technical_logbooks_src: SQLSource, maintenance_src: SQLSource) -> Iterator[datetime]:
+def _extract_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSource, maintenance_dates_src: SQLSource) -> Iterator[datetime]:
     """Helper generator to yield all unique date objects from different sources."""
     # chain() efficiently combines multiple iterators
-    for row in chain(flights_src, technical_logbooks_src, maintenance_src):
+    for row in chain(flights_dates_src, technical_logbooks_dates_src, maintenance_dates_src):
         # This condition will be true for rows from flights_src OR maintenance_src
         if 'scheduleddeparture' in row and row['scheduleddeparture']:
             yield row['scheduleddeparture']
         # This condition will only be evaluated for rows from other sources,
-        # like technical_logbooks_src.
+        # like technical_logbooks_dates_src.
         elif 'executiondate' in row and row['executiondate']:
             yield row['executiondate']
 
 
-def get_dates(flights_src: SQLSource, technical_logbooks_src: SQLSource, maintenance_src: SQLSource) -> Iterator[Dict[str, Any]]:
+def get_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSource, maintenance_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
     """Generates unique records for the Day and Month dimensions, enriching the month data."""
     dates_seen: Set[str] = set()
     
     # Process all dates from a single, combined source stream
-    for date_obj in _extract_dates(flights_src, technical_logbooks_src, maintenance_src):
+    for date_obj in _extract_dates(flights_dates_src, technical_logbooks_dates_src, maintenance_dates_src):
         date_str = build_dateCode(date_obj)
         if date_str not in dates_seen:
             dates_seen.add(date_str)
