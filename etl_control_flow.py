@@ -32,10 +32,10 @@ if __name__ == '__main__':
         # 2. Proceed with Data Quality Checks
         # =====================================================================
         
-        print("Performing data quality checks...")
+        #print("Performing data quality checks...")
         
-        flights_src = transform.check_and_fix_1st_and_2nd_BR(flights_src)
-        postflightreports_src = transform.check_and_fix_3rd_BR(postflightreports_src, aircraft_manuf_src)
+        #flights_src = transform.check_and_fix_1st_and_2nd_BR(flights_src)
+        #postflightreports_src = transform.check_and_fix_3rd_BR(postflightreports_src, aircraft_manuf_src)
         
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first
