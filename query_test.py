@@ -1,6 +1,6 @@
 import time
 from dw import DW
-import Proyecto_BDA.extract as extract
+import extract as extract
 
 
 def time_and_print(function):

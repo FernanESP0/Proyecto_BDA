@@ -1,7 +1,7 @@
 from dw import DW
-import Proyecto_BDA.extract as extract
-import Proyecto_BDA.transform as transform
-import Proyecto_BDA.load as load
+import extract as extract
+import transform as transform
+import load as load
 
 
 if __name__ == '__main__':
@@ -34,8 +34,8 @@ if __name__ == '__main__':
         
         print("Performing data quality checks...")
         
-        flights_src = transform.check_flights_data_quality(flights_src)
-        postflightreports_src = transform.check_postflightreports_data_quality(postflightreports_src, aircraft_manuf_src)
+        flights_src = transform.check_and_fix_1st_and_2nd_BR(flights_src)
+        postflightreports_src = transform.check_and_fix_3rd_BR(postflightreports_src, aircraft_manuf_src)
         
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first
