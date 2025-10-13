@@ -1,3 +1,11 @@
+"""
+ETL Extraction Module
+
+Handles data extraction from PostgreSQL and CSV files.
+Provides raw data sources for the transformation stage and executes
+pre-defined baseline queries against the source database.
+"""
+
 from pathlib import Path
 import psycopg2 # type: ignore
 import pandas as pd
@@ -35,7 +43,7 @@ except Exception as e:
 #  Extracting functions of CSV files
 # ============================================================
 
-def get_aircraft_manufacturer_info():
+def get_aircraft_manufacturer_info() -> CSVSource:
     """
     Extract aircraft manufacturer information from the provided CSV file.
     """
@@ -46,7 +54,7 @@ def get_aircraft_manufacturer_info():
     )
 
 
-def get_maintenance_personnel():
+def get_maintenance_personnel() -> CSVSource:
     """ 
     Extract maintenance personnel information from the provided CSV file.
     """
@@ -61,7 +69,7 @@ def get_maintenance_personnel():
 # ============================================================
 
 
-def get_reporters_info(): 
+def get_reporters_info() -> SQLSource: 
     """
     Extract technical logbook information from the PostgreSQL source. In specific,
     extract only the reporter IDs from the table "AMOS".technicallogbookorders.
@@ -69,35 +77,35 @@ def get_reporters_info():
     return SQLSource(conn, 'SELECT executionplace, reporteurid FROM "AMOS".technicallogbookorders', asdict=True)
 
 
-def get_reporting_dates():
+def get_reporting_dates() -> SQLSource:
     """
     Extract technical logbook reporting dates from the PostgreSQL source. 
     """
     return SQLSource(conn, 'SELECT reportingdate FROM "AMOS".technicallogbookorders', asdict=True)
 
 
-def get_flights():
+def get_flights() -> SQLSource:
     """
     Extract flight information from the PostgreSQL source. 
     """
     return SQLSource(conn, 'SELECT * FROM "AIMS".flights', asdict=True)
 
 
-def get_flight_dates():
+def get_flight_dates() -> SQLSource:
     """
     Extract flight departure dates from the PostgreSQL source. 
     """
     return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights', asdict=True)
 
 
-def get_postflightreports():
+def get_postflightreports() -> SQLSource:
     """
     Extract post flight report information from the PostgreSQL source. 
     """
     return SQLSource(conn, 'SELECT * FROM "AMOS".postflightreports', asdict=True)
 
 
-def get_delays_info():
+def get_delays_info() -> SQLSource:
     """
     Extract delay information from the PostgreSQL source. 
     """
@@ -106,6 +114,9 @@ def get_delays_info():
 
 # =======================================================================================================
 # Baseline queries
+# =======================================================================================================
+
+
 def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
     # TODO: Implement a function to generate a dictionary with one entry per manufacturer and a list of aircraft identifiers as values
     aircrafts: dict[str, list[str]] = {}

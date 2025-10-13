@@ -5,6 +5,7 @@ This module contains all functions responsible for loading the transformed data
 into the target data warehouse tables. Each function is designed to take a 
 pygrametl data warehouse object and a data iterator as input.
 """
+
 from tqdm import tqdm # type: ignore
 from typing import Iterator, Dict, Any
 

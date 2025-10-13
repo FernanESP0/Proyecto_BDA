@@ -5,6 +5,7 @@ This module contains all the functions required to transform raw source data
 into the structures expected by the data warehouse dimensions and fact tables.
 It also includes functions for cleaning data according to predefined business rules.
 """
+
 from tqdm import tqdm # type: ignore
 import logging
 from datetime import timezone, datetime
