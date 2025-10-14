@@ -49,8 +49,7 @@ def get_aircraft_manufacturer_info() -> CSVSource:
     """
     return CSVSource(
         open('aircraft_manufacturerinfo-lookup.csv', 'r', encoding='utf-8'),
-        delimiter=',',
-        asdict=True
+        delimiter=','
     )
 
 
@@ -60,8 +59,7 @@ def get_maintenance_personnel() -> CSVSource:
     """
     return CSVSource(
         open('maintenance_personnel.csv', 'r', encoding='utf-8'),
-        delimiter=',',
-        asdict=True
+        delimiter=','
     )
 
 # ============================================================
@@ -73,7 +71,7 @@ def get_logbooks_info() -> SQLSource:
     """
     Extract all technical logbook entries necessary from the PostgreSQL source.
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, executiondate, reporteurid FROM "AMOS".technicallogbookorders', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, executiondate, reporteurid FROM "AMOS".technicallogbookorders')
 
 
 def get_reporters_info() -> SQLSource: 
@@ -81,56 +79,56 @@ def get_reporters_info() -> SQLSource:
     Extract technical logbook information from the PostgreSQL source. In specific,
     extract only the reporter IDs from the table "AMOS".technicallogbookorders.
     """
-    return SQLSource(conn, 'SELECT executionplace, reporteurid FROM "AMOS".technicallogbookorders', asdict=True)
+    return SQLSource(conn, 'SELECT executionplace, reporteurid FROM "AMOS".technicallogbookorders')
 
 
 def get_reporting_dates() -> SQLSource:
     """
     Extract technical logbook reporting dates from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT reportingdate FROM "AMOS".technicallogbookorders', asdict=True)
+    return SQLSource(conn, 'SELECT reportingdate FROM "AMOS".technicallogbookorders')
 
 
 def get_flights() -> SQLSource:
     """
     Extract flight information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights')
 
 
 def get_flight_dates() -> SQLSource:
     """
     Extract flight departure dates from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights', asdict=True)
+    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights')
 
 
 def get_maintenance_info() -> SQLSource:
     """
     Extract maintenance information from the PostgreSQL source.
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance')
 
 
 def get_maintenance_dates() -> SQLSource:
     """
     Extract maintenance dates from the PostgreSQL source.
     """
-    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".maintenance', asdict=True)
+    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".maintenance')
 
 
 def get_postflightreports() -> SQLSource:
     """
     Extract post flight report information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT * FROM "AMOS".postflightreports', asdict=True)
+    return SQLSource(conn, 'SELECT * FROM "AMOS".postflightreports')
 
 
 def get_delays_info() -> SQLSource:
     """
     Extract delay information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, duration, delaycode FROM "AMOS".operationinterruption', asdict=True)
+    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, duration, delaycode FROM "AMOS".operationinterruption')
 
 
 # =======================================================================================================
