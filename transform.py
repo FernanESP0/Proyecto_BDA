@@ -103,12 +103,12 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
                 'Report_Airport_Code': row['airport'],
             }
             
-    # Process pilots (PIREP), avoiding duplicates
+    # Process the remaining reporters (PIREP or MAREP) for a given airport
     for row in reporter_src:
-        if ('PIREP', row['executionplace']) not in reporters_seen:
-            reporters_seen.add(('PIREP', row['executionplace']))
+        if (row['reporteurclass'], row['executionplace']) not in reporters_seen:
+            reporters_seen.add((row['reporteurclass'], row['executionplace']))
             yield {
-                'Reporter_Class': 'PIREP',
+                'Reporter_Class': row['reporteurclass'],
                 'Report_Airport_Code': row['executionplace'],
             }
 
