@@ -28,7 +28,7 @@ def load_aircrafts(dw: Any, aircraft_iterator: Iterator[Dict[str, str]]) -> None
     """
     print("Loading dimension: Aircraft...")
     for row in tqdm(aircraft_iterator, desc="Dim: Aircraft"):
-        dw.aircraft_dim.insert(row)
+        dw.aircrafts_dim.insert(row)
 
 
 def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None:
@@ -41,7 +41,7 @@ def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None
     """
     print("Loading dimension: Reporter...")
     for row in tqdm(reporter_iterator, desc="Dim: Reporter"):
-        dw.reporter_dim.insert(row)
+        dw.reporters_dim.insert(row)
 
 
 def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
@@ -55,7 +55,7 @@ def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
     """
     print("Loading snowflaked dimension: Month and Day...")
     for row in tqdm(date_iterator, desc="Dim: Date (Month/Day)"):
-        dw.date_dim.ensure(row)
+        dw.dates_dim.ensure(row)
 
 
 # =============================================================================

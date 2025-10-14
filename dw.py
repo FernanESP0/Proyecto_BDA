@@ -25,7 +25,7 @@ class DW:
                 self.conn_duckdb.execute('''
                     CREATE TYPE Aircraft_Manufacturer AS ENUM ('Airbus', 'Boeing'); 
 
-                    CREATE TABLE Aircraft (
+                    CREATE TABLE Aircrafts (
                         Aircraft_ID                INT PRIMARY KEY, -- surrogate key
                         Aircraft_Registration_Code VARCHAR(10) NOT NULL UNIQUE,
                         Manufacturer_Serial_Number VARCHAR(20) NOT NULL,
@@ -33,14 +33,14 @@ class DW:
                         Aircraft_Manufacturer_Class Aircraft_Manufacturer NOT NULL
                     );
 
-                    CREATE TABLE Month (
+                    CREATE TABLE Months (
                         Month_ID   INT PRIMARY KEY, -- surrogate key
                         Month_Num  INT NOT NULL CHECK (Month_Num BETWEEN 1 AND 12),
                         Year       INT NOT NULL,
                         UNIQUE (Month_Num, Year)     
                     );
 
-                    CREATE TABLE Day (
+                    CREATE TABLE Days (
                         Day_ID   INT PRIMARY KEY, -- surrogate key
                         Day_Num  INT NOT NULL CHECK (Day_Num BETWEEN 1 AND 31),
                         Month_ID INT NOT NULL,
@@ -49,7 +49,7 @@ class DW:
 
                     CREATE TYPE ReportKind AS ENUM ('PIREP', 'MAREP'); 
 
-                    CREATE TABLE Reporter (
+                    CREATE TABLE Reporters (
                         Reporter_ID         INT PRIMARY KEY, -- surrogate key
                         Reporter_Class      ReportKind NOT NULL,
                         Report_Airport_Code CHAR(3),
@@ -69,8 +69,8 @@ class DW:
                         CFC         INT   NOT NULL CHECK (CFC > 0),
                         TDM         INT   NOT NULL CHECK (TDM > 0),
                         PRIMARY KEY (Day_ID, Aircraft_ID),
-                        FOREIGN KEY (Day_ID) REFERENCES Day(Day_ID),
-                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircraft(Aircraft_ID)
+                        FOREIGN KEY (Day_ID) REFERENCES Days(Day_ID),
+                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
                     );
 
                     CREATE TABLE Aircraft_Monthly_Summary (
@@ -80,8 +80,8 @@ class DW:
                         ADOSS       INT NOT NULL CHECK (ADOSS > 0),
                         ADOSU       INT NOT NULL CHECK (ADOSU > 0),
                         PRIMARY KEY (Month_ID, Aircraft_ID),
-                        FOREIGN KEY (Month_ID) REFERENCES Month(Month_ID),
-                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircraft(Aircraft_ID)
+                        FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID),
+                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
                     );
 
                     CREATE TABLE Logbooks (
@@ -90,9 +90,9 @@ class DW:
                         Reporter_ID INT NOT NULL,
                         Log_Count   INT NOT NULL CHECK (Log_Count > 0),
                         PRIMARY KEY (Month_ID, Aircraft_ID, Reporter_ID),
-                        FOREIGN KEY (Month_ID) REFERENCES Month(Month_ID),
-                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircraft(Aircraft_ID),
-                        FOREIGN KEY (Reporter_ID) REFERENCES Reporter(Reporter_ID)
+                        FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID),
+                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID),
+                        FOREIGN KEY (Reporter_ID) REFERENCES Reporters(Reporter_ID)
                     );
                 ''')
                 print("DW tables created successfully")
@@ -109,8 +109,8 @@ class DW:
         # Dimensions
         # =======================================================================================================
 
-        self.aircraft_dim = CachedDimension(
-            name='Aircraft',
+        self.aircrafts_dim = CachedDimension(
+            name='Aircrafts',
             key='Aircraft_ID',
             attributes=[
                 'Aircraft_Registration_Code',
@@ -121,26 +121,26 @@ class DW:
             lookupatts=['Aircraft_Registration_Code']
         )
 
-        self.month_dim = CachedDimension(
-            name='Month',
+        self.months_dim = CachedDimension(
+            name='Months',
             key='Month_ID',
             attributes=['Month_Num', 'Year'],
             lookupatts=['Month_Num', 'Year']
         )
 
-        self.day_dim = CachedDimension(
-            name='Day',
+        self.days_dim = CachedDimension(
+            name='Days',
             key='Day_ID',
             attributes=['Day_Num', 'Month_ID'],
             lookupatts=['Day_Num', 'Month_ID']
         )
         
-        self.date_dim = SnowflakedDimension(
-           [(self.day_dim, self.month_dim)]
+        self.dates_dim = SnowflakedDimension(
+           [(self.days_dim, self.months_dim)]
         )
 
-        self.reporter_dim = CachedDimension(
-            name='Reporter',
+        self.reporters_dim = CachedDimension(
+            name='Reporters',
             key='Reporter_ID',
             attributes=['Reporter_Class', 'Report_Airport_Code'],
             lookupatts=['Reporter_Class', 'Report_Airport_Code']

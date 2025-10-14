@@ -153,8 +153,8 @@ def get_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSou
 def get_flights_operations_daily(
     flights_src: SQLSource,
     operation_interruption_src: SQLSource,
-    date_dim: SnowflakedDimension,
-    aircraft_dim: CachedDimension
+    dates_dim: SnowflakedDimension,
+    aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """
     Aggregates flight data by day and aircraft to create daily operational facts.
@@ -179,10 +179,10 @@ def get_flights_operations_daily(
             # 1. Look up Surrogate Keys
             dep_date = row['scheduleddeparture']
             day_num, month_num, year = get_date(build_dateCode(dep_date))
-            month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
-            day_id = date_dim.lookup({'Day_Num': day_num, 'Month_ID': month_id})
-            aircraft_id = aircraft_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            
+            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
+            day_id = dates_dim.lookup({'Day_Num': day_num, 'Month_ID': month_id})
+            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+
             fact_key = (day_id, aircraft_id)
             if fact_key not in daily_aggregates:
                 daily_aggregates[fact_key] = {'FH': 0, 'Takeoffs': 0, 'OFC': 0, 'CFC': 0, 'TDM': 0}
@@ -232,8 +232,8 @@ def get_flights_operations_daily(
 
 def get_aircrafts_monthly_snapshot(
     maintenance_src: SQLSource, 
-    date_dim: SnowflakedDimension, 
-    aircraft_dim: CachedDimension
+    dates_dim: SnowflakedDimension, 
+    aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """Aggregates maintenance data to create a monthly snapshot of aircraft service days."""
     
@@ -247,9 +247,9 @@ def get_aircrafts_monthly_snapshot(
             end_date = row['scheduledarrival']
             
             _, month_num, year = get_date(build_dateCode(start_date))
-            month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
-            aircraft_id = aircraft_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            
+            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
+            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+
             fact_key = (month_id, aircraft_id)
             if fact_key not in monthly_out_of_service_data:
                 monthly_out_of_service_data[fact_key] = {
@@ -293,9 +293,9 @@ def get_aircrafts_monthly_snapshot(
 
 def get_logbooks(
     technical_logbooks_src: SQLSource, 
-    date_dim: SnowflakedDimension, 
-    aircraft_dim: CachedDimension, 
-    reporter_dim: CachedDimension
+    dates_dim: SnowflakedDimension, 
+    aircrafts_dim: CachedDimension, 
+    reporters_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """Aggregates technical logbook entries by month, aircraft, and reporter."""
     log_counts: Dict[Tuple[int, int, int], int] = {}
@@ -305,10 +305,10 @@ def get_logbooks(
         try:
             rep_date = row['executiondate']
             _, month_num, year = get_date(build_dateCode(rep_date))
-            month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
-            aircraft_id = aircraft_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            reporter_id = reporter_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
-            
+            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
+            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+            reporter_id = reporters_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
+
             fact_key = (month_id, aircraft_id, reporter_id)
             log_counts[fact_key] = log_counts.get(fact_key, 0) + 1
 
