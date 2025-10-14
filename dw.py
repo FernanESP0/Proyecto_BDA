@@ -51,10 +51,9 @@ class DW:
 
                     CREATE TABLE Reporter (
                         Reporter_ID         INT PRIMARY KEY, -- surrogate key
-                        Reporter_Code       INT NOT NULL,
+                        Reporter_Class      ReportKind NOT NULL,
                         Report_Airport_Code CHAR(3),
-                        Reporter_Class ReportKind NOT NULL,
-                        UNIQUE (Reporter_Code)
+                        UNIQUE (Reporter_Class, Report_Airport_Code)
                     );
 
                     -- ===========================
@@ -143,8 +142,8 @@ class DW:
         self.reporter_dim = CachedDimension(
             name='Reporter',
             key='Reporter_ID',
-            attributes=['Reporter_Code', 'Report_Airport_Code', 'Reporter_Class'],
-            lookupatts=['Reporter_Code']
+            attributes=['Reporter_Class', 'Report_Airport_Code'],
+            lookupatts=['Reporter_Class', 'Report_Airport_Code']
         )
 
         # =======================================================================================================

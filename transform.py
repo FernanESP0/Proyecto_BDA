@@ -92,26 +92,24 @@ def get_aircrafts(aircraft_src: CSVSource) -> Iterator[Dict[str, str]]:
 
 def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource) -> Iterator[Dict[str, str]]:
     """Merges and transforms pilots and maintenance personnel for the Reporter dimension."""
-    reporters_seen: Set[str] = set()
+    reporters_seen: Set[tuple[str, str]] = set()
     
     # Process maintenance personnel (MAREP)
     for row in maintenance_personnel_src:
-        if row['reporteurid'] not in reporters_seen:
-            reporters_seen.add(row['reporteurid'])
+        if ('MAREP', row['airport']) not in reporters_seen:
+            reporters_seen.add(('MAREP', row['airport']))
             yield {
-                'Reporter_Code': row['reporteurid'],
+                'Reporter_Class': 'MAREP',
                 'Report_Airport_Code': row['airport'],
-                'Reporter_Class': 'MAREP'
             }
             
     # Process pilots (PIREP), avoiding duplicates
     for row in reporter_src:
-        if row['reporteurid'] not in reporters_seen:
-            reporters_seen.add(row['reporteurid'])
+        if ('PIREP', row['executionplace']) not in reporters_seen:
+            reporters_seen.add(('PIREP', row['executionplace']))
             yield {
-                'Reporter_Code': row['reporteurid'],
+                'Reporter_Class': 'PIREP',
                 'Report_Airport_Code': row['executionplace'],
-                'Reporter_Class': 'PIREP'
             }
 
 
@@ -309,7 +307,7 @@ def get_logbooks(
             _, month_num, year = get_date(build_dateCode(rep_date))
             month_id = date_dim.lookup({'Month_Num': month_num, 'Year': year})
             aircraft_id = aircraft_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            reporter_id = reporter_dim.lookup({'Reporter_Code': row['reporteurid']})
+            reporter_id = reporter_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
             
             fact_key = (month_id, aircraft_id, reporter_id)
             log_counts[fact_key] = log_counts.get(fact_key, 0) + 1
