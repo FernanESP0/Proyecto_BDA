@@ -48,7 +48,7 @@ def get_aircraft_manufacturer_info() -> CSVSource:
     Extract aircraft manufacturer information from the provided CSV file.
     """
     return CSVSource(
-        open('aircraft_manufacturerinfo-lookup.csv', 'r', encoding='utf-8'),
+        open('aircraft-manufaturerinfo-lookup.csv', 'r', encoding='utf-8'),
         delimiter=','
     )
 

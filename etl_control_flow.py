@@ -10,13 +10,16 @@ if __name__ == '__main__':
         # =====================================================================
         # 1. INITIALIZATION: Create DW and Extract all data sources
         # =====================================================================
-        print("--- [PHASE 1] Initializing DW and Extracting Sources ---")
+        print("--- [PHASE 1] Initializing DW and Extracting from Sources ---")
         dw = DW(create=True)
 
+        print("Extracting data from CSV sources")
         # CSV Sources
         aircraft_manuf_src = extract.get_aircraft_manufacturer_info()
         maint_personnel_src = extract.get_maintenance_personnel()
+        print("CSV sources extracted.")
 
+        print("Extracting data from PostgreSQL sources")
         # PostgreSQL Sources
         flights_src = extract.get_flights()
         flights_dates_src = extract.get_flight_dates()
@@ -27,6 +30,7 @@ if __name__ == '__main__':
         postflightreports_src = extract.get_postflightreports()
         delays_info_src = extract.get_delays_info()
         logbooks_src = extract.get_logbooks_info()
+        print("PostgreSQL sources extracted.")
         
         # =====================================================================
         # 2. Proceed with Data Quality Checks
@@ -40,57 +44,57 @@ if __name__ == '__main__':
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first
         # =====================================================================
-        print("\n--- [PHASE 2] Loading Dimension Tables ---")
+        # print("\n--- [PHASE 2] Loading Dimension Tables ---")
 
-        # Load Aircraft Dimension
-        aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
-        load.load_aircrafts(dw, aircraft_iterator)
+        # # Load Aircraft Dimension
+        # aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
+        # load.load_aircrafts(dw, aircraft_iterator)
 
-        # Load Reporter Dimension
-        reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
-        load.load_reporters(dw, reporter_iterator)
+        # # Load Reporter Dimension
+        # reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
+        # load.load_reporters(dw, reporter_iterator)
 
-        # Load Date Dimension (Month and Day tables)
-        date_iterator = transform.get_dates(flights_dates_src, reporting_dates_src, maintenance_dates_src)
-        load.load_dates(dw, date_iterator)
-        
-        # An explicit commit after dimensions is good practice
-        dw.conn_pygrametl.commit()
-        print("Dimensions loaded and committed.")
+        # # Load Date Dimension (Month and Day tables)
+        # date_iterator = transform.get_dates(flights_dates_src, reporting_dates_src, maintenance_dates_src)
+        # load.load_dates(dw, date_iterator)
+        # 
+        # # An explicit commit after dimensions is good practice
+        # dw.conn_pygrametl.commit()
+        # print("Dimensions loaded and committed.")
 
         # =====================================================================
         # 4. LOAD FACT TABLES: Populate fact tables using populated dimensions
         # =====================================================================
-        print("\n--- [PHASE 3] Loading Fact Tables ---")
+        # print("\n--- [PHASE 3] Loading Fact Tables ---")
 
-        # Load Flight Operations Daily Fact Table
-        # Note how we pass the populated dw.date_dim and dw.aircraft_dim
-        fod_iterator = transform.get_flights_operations_daily(
-            flights_src,
-            delays_info_src,
-            dw.date_dim,
-            dw.aircraft_dim
-        )
-        load.load_flights_operations_daily(dw, fod_iterator)
+        # # Load Flight Operations Daily Fact Table
+        # # Note how we pass the populated dw.date_dim and dw.aircraft_dim
+        # fod_iterator = transform.get_flights_operations_daily(
+        #     flights_src,
+        #     delays_info_src,
+        #     dw.date_dim,
+        #     dw.aircraft_dim
+        # )
+        # load.load_flights_operations_daily(dw, fod_iterator)
 
-        # Load Aircraft Monthly Summary Fact Table
-        ams_iterator = transform.get_aircrafts_monthly_snapshot(
-            maintenance_src,
-            dw.date_dim,
-            dw.aircraft_dim
-        )
-        load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
+        # # Load Aircraft Monthly Summary Fact Table
+        # ams_iterator = transform.get_aircrafts_monthly_snapshot(
+        #     maintenance_src,
+        #     dw.date_dim,
+        #     dw.aircraft_dim
+        # )
+        # load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
 
-        # Load Logbooks Fact Table
-        logbooks_iterator = transform.get_logbooks(
-            logbooks_src,
-            dw.date_dim,
-            dw.aircraft_dim,
-            dw.reporter_dim
-        )
-        load.load_logbooks(dw, logbooks_iterator)
+        # # Load Logbooks Fact Table
+        # logbooks_iterator = transform.get_logbooks(
+        #     logbooks_src,
+        #     dw.date_dim,
+        #     dw.aircraft_dim,
+        #     dw.reporter_dim
+        # )
+        # load.load_logbooks(dw, logbooks_iterator)
 
-        print("\nETL process completed successfully! ✅")
+        # print("\nETL process completed successfully! ✅")
 
     except Exception as e:
         print(f"\nAn error occurred during the ETL process: {e}")
