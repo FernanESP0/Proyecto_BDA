@@ -42,12 +42,16 @@ def get_date(date_str: str) -> Tuple[int, int, int]:
     return (day_num, month_num, year)
 
 
-def calculate_minutes(time_str: str) -> int:
+def calculate_minutes(time_str: str) -> float:
     """Converts a 'HH:MM:SS' string into total minutes."""
     if not time_str:
-        return 0
-    h, m, s = map(int, time_str.split(':'))
-    return int(round(h * 60 + m + (s / 60)))
+        return 0.0
+    try:
+        h, m, s = map(int, time_str.split(':'))
+        return h * 60 + m + s / 60
+    except ValueError:
+        logging.warning(f"Invalid time format: {time_str}")
+        return 0.0
 
 
 def calculate_hours(start_time: str, end_time: str) -> float:
@@ -124,8 +128,8 @@ def _extract_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: S
             yield row['scheduleddeparture']
         # This condition will only be evaluated for rows from other sources,
         # like technical_logbooks_dates_src.
-        elif 'executiondate' in row and row['executiondate']:
-            yield row['executiondate']
+        elif 'reportingdate' in row and row['reportingdate']:
+            yield row['reportingdate']
 
 
 def get_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSource, maintenance_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
@@ -166,7 +170,7 @@ def get_flights_operations_daily(
     # Pre-aggregate total delay minutes by delay code.
     # This avoids a slow, nested loop. We create a lookup dictionary first.
     print("Pre-aggregating delay information for performance...")
-    tdm_lookup: Dict[Tuple[int, str, str], int] = {}
+    tdm_lookup: Dict[Tuple[int, str, str], float] = {}
     for row in tqdm(operation_interruption_src, desc="Processing Delays"):
         delay_code = row['delaycode']
         # Sum the duration for each delay code
@@ -203,7 +207,7 @@ def get_flights_operations_daily(
             
             # --- CORRECT DELAY LOGIC ---
             delayed_flight_count = 0
-            total_delay_minutes = 0
+            total_delay_minutes = 0.0
             
             # A flight is considered delayed if it has a delay code.
             if row['delaycode'] is not None:
@@ -237,7 +241,7 @@ def get_flights_operations_daily(
 
 def get_aircrafts_monthly_snapshot(
     maintenance_src: SQLSource, 
-    dates_dim: SnowflakedDimension, 
+    months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """Aggregates maintenance data to create a monthly snapshot of aircraft service days."""
@@ -252,7 +256,10 @@ def get_aircrafts_monthly_snapshot(
             end_date = row['scheduledarrival']
             
             _, month_num, year = get_date(build_dateCode(start_date))
-            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
+            month_id = months_dim.lookup({
+                'Month_Num': month_num,
+                'Year': year
+            })
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
             fact_key = (month_id, aircraft_id)
@@ -298,7 +305,7 @@ def get_aircrafts_monthly_snapshot(
 
 def get_logbooks(
     technical_logbooks_src: SQLSource, 
-    dates_dim: SnowflakedDimension, 
+    months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension, 
     reporters_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
@@ -308,9 +315,9 @@ def get_logbooks(
     print("Aggregating logbook entries...")
     for row in tqdm(technical_logbooks_src, desc="Processing Logbooks"):
         try:
-            rep_date = row['executiondate']
+            rep_date = row['reportingdate']
             _, month_num, year = get_date(build_dateCode(rep_date))
-            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
+            month_id = months_dim.lookup({'Month_Num': month_num, 'Year': year})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
             reporter_id = reporters_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
 

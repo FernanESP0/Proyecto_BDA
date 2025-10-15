@@ -67,7 +67,7 @@ class DW:
                         Takeoffs    INT   NOT NULL CHECK (Takeoffs >= 0),
                         DFC         INT   NOT NULL CHECK (DFC >= 0),
                         CFC         INT   NOT NULL CHECK (CFC >= 0),
-                        TDM         INT   NOT NULL CHECK (TDM >= 0),
+                        TDM         FLOAT   NOT NULL CHECK (TDM >= 0),
                         PRIMARY KEY (Day_ID, Aircraft_ID),
                         FOREIGN KEY (Day_ID) REFERENCES Days(Day_ID),
                         FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
@@ -76,9 +76,9 @@ class DW:
                     CREATE TABLE Aircraft_Monthly_Summary (
                         Month_ID    INT NOT NULL,
                         Aircraft_ID INT NOT NULL,
-                        ADIS        INT NOT NULL CHECK (ADIS > 0),
-                        ADOSS       INT NOT NULL CHECK (ADOSS > 0),
-                        ADOSU       INT NOT NULL CHECK (ADOSU > 0),
+                        ADIS        FLOAT NOT NULL CHECK (ADIS >= 0),
+                        ADOSS       FLOAT NOT NULL CHECK (ADOSS >= 0),
+                        ADOSU       FLOAT NOT NULL CHECK (ADOSU >= 0),
                         PRIMARY KEY (Month_ID, Aircraft_ID),
                         FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID),
                         FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)

@@ -71,7 +71,7 @@ def get_logbooks_info() -> SQLSource:
     """
     Extract all technical logbook entries necessary from the PostgreSQL source.
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, executiondate, executionplace, reporteurclass FROM "AMOS".technicallogbookorders')
+    return SQLSource(conn, 'SELECT aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders')
 
 
 def get_reporters_info() -> SQLSource: 

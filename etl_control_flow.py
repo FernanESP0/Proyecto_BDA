@@ -69,30 +69,30 @@ if __name__ == '__main__':
 
         # Load Flight Operations Daily Fact Table
         # Note how we pass the populated dw.date_dim and dw.aircraft_dim
-        fod_iterator = transform.get_flights_operations_daily(
-            flights_src,
-            delays_info_src,
-            dw.dates_dim,
-            dw.aircrafts_dim
+        #fod_iterator = transform.get_flights_operations_daily(
+        #    flights_src,
+        #    delays_info_src,
+        #    dw.dates_dim,
+        #    dw.aircrafts_dim
+        #)
+        #load.load_flights_operations_daily(dw, fod_iterator)
+
+        # Load Aircraft Monthly Summary Fact Table
+        #ams_iterator = transform.get_aircrafts_monthly_snapshot(
+        #    maintenance_src,
+        #    dw.months_dim,
+        #    dw.aircrafts_dim
+        #)
+        #load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
+
+        # Load Logbooks Fact Table
+        logbooks_iterator = transform.get_logbooks(
+            logbooks_src,
+            dw.months_dim,
+            dw.aircrafts_dim,
+            dw.reporters_dim
         )
-        load.load_flights_operations_daily(dw, fod_iterator)
-
-        # # Load Aircraft Monthly Summary Fact Table
-        # ams_iterator = transform.get_aircrafts_monthly_snapshot(
-        #     maintenance_src,
-        #     dw.date_dim,
-        #     dw.aircraft_dim
-        # )
-        # load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
-
-        # # Load Logbooks Fact Table
-        # logbooks_iterator = transform.get_logbooks(
-        #     logbooks_src,
-        #     dw.date_dim,
-        #     dw.aircraft_dim,
-        #     dw.reporter_dim
-        # )
-        # load.load_logbooks(dw, logbooks_iterator)
+        load.load_logbooks(dw, logbooks_iterator)
 
         # print("\nETL process completed successfully! ✅")
 
