@@ -44,7 +44,7 @@ class DW:
                         Day_ID   INT PRIMARY KEY, -- surrogate key
                         Day_Num  INT NOT NULL CHECK (Day_Num BETWEEN 1 AND 31),
                         Month_ID INT NOT NULL,
-                        FOREIGN KEY (Month_ID) REFERENCES Month(Month_ID)
+                        FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID)
                     );
 
                     CREATE TYPE ReportKind AS ENUM ('PIREP', 'MAREP'); 
