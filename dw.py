@@ -63,11 +63,11 @@ class DW:
                     CREATE TABLE Flight_operations_Daily (
                         Day_ID      INT NOT NULL,
                         Aircraft_ID INT NOT NULL,
-                        FH          FLOAT NOT NULL CHECK (FH > 0),
-                        Takeoffs    INT   NOT NULL CHECK (Takeoffs > 0),
-                        OFC         INT   NOT NULL CHECK (OFC > 0),
-                        CFC         INT   NOT NULL CHECK (CFC > 0),
-                        TDM         INT   NOT NULL CHECK (TDM > 0),
+                        FH          FLOAT NOT NULL,
+                        Takeoffs    INT   NOT NULL CHECK (Takeoffs >= 0),
+                        DFC         INT   NOT NULL CHECK (DFC >= 0),
+                        CFC         INT   NOT NULL CHECK (CFC >= 0),
+                        TDM         INT   NOT NULL CHECK (TDM >= 0),
                         PRIMARY KEY (Day_ID, Aircraft_ID),
                         FOREIGN KEY (Day_ID) REFERENCES Days(Day_ID),
                         FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
@@ -153,7 +153,7 @@ class DW:
         self.flight_fact = FactTable(
             name='Flight_operations_Daily',
             keyrefs=['Day_ID', 'Aircraft_ID'],
-            measures=['FH', 'Takeoffs', 'OFC', 'CFC', 'TDM']
+            measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM']
         )
 
         self.aircraft_monthly_fact = FactTable(

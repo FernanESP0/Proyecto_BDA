@@ -128,7 +128,7 @@ def get_delays_info() -> SQLSource:
     """
     Extract delay information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, duration, delaycode FROM "AMOS".operationinterruption')
+    return SQLSource(conn, 'SELECT aircraftregistration, starttime, duration, delaycode FROM "AMOS".operationinterruption')
 
 
 # =======================================================================================================

@@ -44,38 +44,38 @@ if __name__ == '__main__':
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first
         # =====================================================================
-        # print("\n--- [PHASE 2] Loading Dimension Tables ---")
+        print("\n--- [PHASE 2] Loading Dimension Tables ---")
 
-        # # Load Aircraft Dimension
-        # aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
-        # load.load_aircrafts(dw, aircraft_iterator)
+        # Load Aircraft Dimension
+        aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
+        load.load_aircrafts(dw, aircraft_iterator)
 
-        # # Load Reporter Dimension
-        # reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
-        # load.load_reporters(dw, reporter_iterator)
+        # Load Reporter Dimension
+        reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
+        load.load_reporters(dw, reporter_iterator)
 
-        # # Load Date Dimension (Month and Day tables)
-        # date_iterator = transform.get_dates(flights_dates_src, reporting_dates_src, maintenance_dates_src)
-        # load.load_dates(dw, date_iterator)
-        # 
-        # # An explicit commit after dimensions is good practice
-        # dw.conn_pygrametl.commit()
-        # print("Dimensions loaded and committed.")
+        # Load Date Dimension (Month and Day tables)
+        date_iterator = transform.get_dates(flights_dates_src, reporting_dates_src, maintenance_dates_src)
+        load.load_dates(dw, date_iterator)
+
+        # Commit after dimensions load for referential integrity in fact tables
+        dw.conn_pygrametl.commit()
+        print("Dimensions loaded and committed.")
 
         # =====================================================================
         # 4. LOAD FACT TABLES: Populate fact tables using populated dimensions
         # =====================================================================
-        # print("\n--- [PHASE 3] Loading Fact Tables ---")
+        print("\n--- [PHASE 3] Loading Fact Tables ---")
 
-        # # Load Flight Operations Daily Fact Table
-        # # Note how we pass the populated dw.date_dim and dw.aircraft_dim
-        # fod_iterator = transform.get_flights_operations_daily(
-        #     flights_src,
-        #     delays_info_src,
-        #     dw.date_dim,
-        #     dw.aircraft_dim
-        # )
-        # load.load_flights_operations_daily(dw, fod_iterator)
+        # Load Flight Operations Daily Fact Table
+        # Note how we pass the populated dw.date_dim and dw.aircraft_dim
+        fod_iterator = transform.get_flights_operations_daily(
+            flights_src,
+            delays_info_src,
+            dw.dates_dim,
+            dw.aircrafts_dim
+        )
+        load.load_flights_operations_daily(dw, fod_iterator)
 
         # # Load Aircraft Monthly Summary Fact Table
         # ams_iterator = transform.get_aircrafts_monthly_snapshot(

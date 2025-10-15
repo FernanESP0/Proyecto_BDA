@@ -55,15 +55,17 @@ def calculate_hours(start_time: str, end_time: str) -> float:
     if not start_time or not end_time:
         return 0.0
     # Note: Expects a very specific format.
-    fmt = "%Y-%m-%d %H:%M:%S.%f"
-    try:
-        start_dt = datetime.strptime(start_time, fmt)
-        end_dt = datetime.strptime(end_time, fmt)
-        duration = end_dt - start_dt
-        return duration.total_seconds() / 3600.0
-    except ValueError:
-        logging.warning(f"Could not parse timestamps: {start_time}, {end_time}")
-        return 0.0
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            start_dt = datetime.strptime(start_time, fmt)
+            end_dt = datetime.strptime(end_time, fmt)
+            duration = end_dt - start_dt
+            return duration.total_seconds() / 3600.0
+        except ValueError:
+            continue  # try next format
+
+    logging.warning(f"Could not parse timestamps: {start_time}, {end_time}")
+    return 0.0
 
 
 def calculate_perct_of_day(hours: float) -> float:
@@ -168,7 +170,7 @@ def get_flights_operations_daily(
     for row in tqdm(operation_interruption_src, desc="Processing Delays"):
         delay_code = row['delaycode']
         # Sum the duration for each delay code
-        tdm_lookup[(delay_code, row['aircraftregistration'], build_dateCode(row['scheduleddeparture']))] = tdm_lookup.get((delay_code, row['aircraftregistration'], build_dateCode(row['scheduleddeparture'])), 0) + calculate_minutes(str(row['duration']))
+        tdm_lookup[(delay_code, row['aircraftregistration'], build_dateCode(row['starttime']))] = tdm_lookup.get((delay_code, row['aircraftregistration'], build_dateCode(row['starttime'])), 0) + calculate_minutes(str(row['duration']))
 
     # Dictionary to aggregate final measures for the fact table
     daily_aggregates: Dict[Tuple[int, int], Dict[str, float]] = {}
@@ -179,13 +181,16 @@ def get_flights_operations_daily(
             # 1. Look up Surrogate Keys
             dep_date = row['scheduleddeparture']
             day_num, month_num, year = get_date(build_dateCode(dep_date))
-            month_id = dates_dim.lookup({'Month_Num': month_num, 'Year': year})
-            day_id = dates_dim.lookup({'Day_Num': day_num, 'Month_ID': month_id})
+            day_id = dates_dim.ensure({
+                    'Day_Num': day_num,
+                    'Month_Num': month_num,
+                    'Year': year
+            })
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
             fact_key = (day_id, aircraft_id)
             if fact_key not in daily_aggregates:
-                daily_aggregates[fact_key] = {'FH': 0, 'Takeoffs': 0, 'OFC': 0, 'CFC': 0, 'TDM': 0}
+                daily_aggregates[fact_key] = {'FH': 0, 'Takeoffs': 0, 'DFC': 0, 'CFC': 0, 'TDM': 0}
 
             # 2. Handle cancelled flights
             if row['cancelled'] or not row['actualdeparture']:
@@ -210,12 +215,12 @@ def get_flights_operations_daily(
             # 4. Add all measures to the daily aggregates
             daily_aggregates[fact_key]['FH'] += fh
             daily_aggregates[fact_key]['Takeoffs'] += takeoffs
-            daily_aggregates[fact_key]['OFC'] += delayed_flight_count # OFC is the count of delayed flights
+            daily_aggregates[fact_key]['DFC'] += delayed_flight_count # DFC is the count of delayed flights
             daily_aggregates[fact_key]['TDM'] += total_delay_minutes
 
         except (KeyError, TypeError) as e:
             logging.warning(f"Skipping flight record due to missing key or data: {e}. Row: {row}")
-
+            
     # 5. Yield the final aggregated rows
     print("Yielding final daily flight facts...")
     for (day_id, aircraft_id), measures in tqdm(daily_aggregates.items(), desc="Finalizing Daily Facts"):
@@ -224,7 +229,7 @@ def get_flights_operations_daily(
             'Aircraft_ID': aircraft_id,
             'FH': measures['FH'],
             'Takeoffs': int(measures['Takeoffs']),
-            'OFC': int(measures['OFC']), # Operational Flight Count (Delayed Flights)
+            'DFC': int(measures['DFC']), # Delayed Flight Count
             'CFC': int(measures['CFC']), # Cancelled Flight Count
             'TDM': int(round(measures['TDM'])) # Total Delay Minutes
         }
