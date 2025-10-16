@@ -22,11 +22,14 @@ if __name__ == '__main__':
         print("Extracting data from PostgreSQL sources")
         # PostgreSQL Sources
         flights_src = extract.get_flights()
-        flights_dates_src = extract.get_flight_dates()
+        flights_dates_src_for_date = extract.get_flight_dates()
+        flights_dates_src_for_month = extract.get_flight_dates() 
         reporter_src = extract.get_reporters_info()
-        reporting_dates_src = extract.get_reporting_dates()
+        reporting_dates_src_for_date = extract.get_reporting_dates()
+        reporting_dates_src_for_month = extract.get_reporting_dates()
         maintenance_src = extract.get_maintenance_info()
-        maintenance_dates_src = extract.get_maintenance_dates()
+        maintenance_dates_src_for_date = extract.get_maintenance_dates()
+        maintenance_dates_src_for_month = extract.get_maintenance_dates()
         postflightreports_src = extract.get_postflightreports()
         delays_info_src = extract.get_delays_info()
         logbooks_src = extract.get_logbooks_info()
@@ -46,17 +49,21 @@ if __name__ == '__main__':
         # =====================================================================
         print("\n--- [PHASE 2] Loading Dimension Tables ---")
 
-        # Load Aircraft Dimension
+        # Load Aircrafts Dimension
         aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
         load.load_aircrafts(dw, aircraft_iterator)
 
-        # Load Reporter Dimension
+        # Load Reporters Dimension
         reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
         load.load_reporters(dw, reporter_iterator)
 
-        # Load Date Dimension (Month and Day tables)
-        date_iterator = transform.get_dates(flights_dates_src, reporting_dates_src, maintenance_dates_src)
+        # Load Dates Dimension 
+        date_iterator = transform.generate_date_dimension_rows(flights_dates_src_for_date, reporting_dates_src_for_date, maintenance_dates_src_for_date)
         load.load_dates(dw, date_iterator)
+        
+        # Load Months Dimension
+        month_iterator = transform.generate_month_dimension_rows(flights_dates_src_for_month, reporting_dates_src_for_month, maintenance_dates_src_for_month)
+        load.load_months(dw, month_iterator)
 
         # Commit after dimensions load for referential integrity in fact tables
         dw.conn_pygrametl.commit()
@@ -68,22 +75,21 @@ if __name__ == '__main__':
         print("\n--- [PHASE 3] Loading Fact Tables ---")
 
         # Load Flight Operations Daily Fact Table
-        # Note how we pass the populated dw.date_dim and dw.aircraft_dim
-        #fod_iterator = transform.get_flights_operations_daily(
-        #    flights_src,
-        #    delays_info_src,
-        #    dw.dates_dim,
-        #    dw.aircrafts_dim
-        #)
-        #load.load_flights_operations_daily(dw, fod_iterator)
+        fod_iterator = transform.get_flights_operations_daily(
+            flights_src,
+            delays_info_src,
+            dw.dates_dim,
+            dw.aircrafts_dim
+        )
+        load.load_flights_operations_daily(dw, fod_iterator)
 
         # Load Aircraft Monthly Summary Fact Table
-        #ams_iterator = transform.get_aircrafts_monthly_snapshot(
-        #    maintenance_src,
-        #    dw.months_dim,
-        #    dw.aircrafts_dim
-        #)
-        #load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
+        ams_iterator = transform.get_aircrafts_monthly_snapshot(
+            maintenance_src,
+            dw.months_dim,
+            dw.aircrafts_dim
+        )
+        load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
 
         # Load Logbooks Fact Table
         logbooks_iterator = transform.get_logbooks(
@@ -94,11 +100,10 @@ if __name__ == '__main__':
         )
         load.load_logbooks(dw, logbooks_iterator)
 
-        # print("\nETL process completed successfully! ✅")
+        print("\nETL process completed successfully! ✅")
 
     except Exception as e:
         print(f"\nAn error occurred during the ETL process: {e}")
-        # Optionally, you can add more detailed error logging here
 
     finally:
         # =====================================================================

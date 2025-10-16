@@ -46,17 +46,28 @@ def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None
 
 def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
     """
-    Loads date data into the snowflaked Month and Day dimension tables, ensuring
-    referential integrity between them with snowflaking.
+    Loads date data into the Date dimension table.
+    
+    Args:
+        dw: The pygrametl data warehouse connection object.
+        date_iterator: An iterator yielding dictionaries with date data.
+    """
+    print("Loading dimension: Date...")
+    for row in tqdm(date_iterator, desc="Dim: Date"):
+        dw.dates_dim.insert(row)
+
+
+def load_months(dw: Any, month_iterator: Iterator[Dict[str, Any]]) -> None:
+    """
+    Loads month data into the Month dimension table.
 
     Args:
         dw: The pygrametl data warehouse connection object.
-        date_iterator: An iterator yielding dictionaries with day, month, and year data.
+        month_iterator: An iterator yielding dictionaries with month and year data.
     """
-    print("Loading snowflaked dimension: Month and Day...")
-    for row in tqdm(date_iterator, desc="Dim: Date (Month/Day)"):
-        dw.dates_dim.ensure(row)
-
+    print("Loading dimension: Month...")
+    for row in tqdm(month_iterator, desc="Dim: Month"):
+        dw.months_dim.insert(row)
 
 # =============================================================================
 # Fact Table Loading Functions

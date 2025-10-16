@@ -2,7 +2,7 @@ import os
 import sys
 import duckdb  # type: ignore
 import pygrametl  # type: ignore
-from pygrametl.tables import CachedDimension, SnowflakedDimension, FactTable # type: ignore
+from pygrametl.tables import CachedDimension, FactTable # type: ignore
 
 
 duckdb_filename = 'dw.duckdb'
@@ -21,38 +21,39 @@ class DW:
 
         if create:
             try:
-                # TODO: Create the tables in the DW
                 self.conn_duckdb.execute('''
                     CREATE TYPE Aircraft_Manufacturer AS ENUM ('Airbus', 'Boeing'); 
 
                     CREATE TABLE Aircrafts (
-                        Aircraft_ID                INT PRIMARY KEY, -- surrogate key
-                        Aircraft_Registration_Code VARCHAR(10) NOT NULL UNIQUE,
-                        Manufacturer_Serial_Number VARCHAR(20) NOT NULL,
-                        Aircraft_Model             VARCHAR(50) NOT NULL,
-                        Aircraft_Manufacturer_Class Aircraft_Manufacturer NOT NULL
+                        Aircraft_ID                   INT PRIMARY KEY, -- surrogate key
+                        Aircraft_Registration_Code    VARCHAR(10) NOT NULL UNIQUE,
+                        Manufacturer_Serial_Number    VARCHAR(20) NOT NULL,
+                        Aircraft_Model                VARCHAR(50) NOT NULL,
+                        Aircraft_Manufacturer_Class   Aircraft_Manufacturer NOT NULL
+                    );
+
+                    CREATE TABLE Dates (
+                        Date_ID             INT PRIMARY KEY, -- surrogate key 
+                        Full_Date           DATE NOT NULL UNIQUE,  -- 'YYYY-MM-DD'
+                        Day_Num             INT NOT NULL,
+                        Month_Num           INT NOT NULL,
+                        Year                INT NOT NULL,
+                        UNIQUE (Day_Num, Month_Num, Year)
                     );
 
                     CREATE TABLE Months (
                         Month_ID   INT PRIMARY KEY, -- surrogate key
                         Month_Num  INT NOT NULL CHECK (Month_Num BETWEEN 1 AND 12),
                         Year       INT NOT NULL,
-                        UNIQUE (Month_Num, Year)     
+                        UNIQUE (Year, Month_Num)
                     );
-
-                    CREATE TABLE Days (
-                        Day_ID   INT PRIMARY KEY, -- surrogate key
-                        Day_Num  INT NOT NULL CHECK (Day_Num BETWEEN 1 AND 31),
-                        Month_ID INT NOT NULL,
-                        FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID)
-                    );
-
+                    
                     CREATE TYPE ReportKind AS ENUM ('PIREP', 'MAREP'); 
 
                     CREATE TABLE Reporters (
-                        Reporter_ID         INT PRIMARY KEY, -- surrogate key
-                        Reporter_Class      ReportKind NOT NULL,
-                        Report_Airport_Code CHAR(3),
+                        Reporter_ID           INT PRIMARY KEY, -- surrogate key
+                        Reporter_Class        ReportKind NOT NULL,
+                        Report_Airport_Code   CHAR(3),
                         UNIQUE (Reporter_Class, Report_Airport_Code)
                     );
 
@@ -61,15 +62,15 @@ class DW:
                     -- ===========================
 
                     CREATE TABLE Flight_operations_Daily (
-                        Day_ID      INT NOT NULL,
+                        Date_ID     INT NOT NULL, 
                         Aircraft_ID INT NOT NULL,
                         FH          FLOAT NOT NULL,
                         Takeoffs    INT   NOT NULL CHECK (Takeoffs >= 0),
                         DFC         INT   NOT NULL CHECK (DFC >= 0),
                         CFC         INT   NOT NULL CHECK (CFC >= 0),
-                        TDM         FLOAT   NOT NULL CHECK (TDM >= 0),
-                        PRIMARY KEY (Day_ID, Aircraft_ID),
-                        FOREIGN KEY (Day_ID) REFERENCES Days(Day_ID),
+                        TDM         FLOAT NOT NULL CHECK (TDM >= 0),
+                        PRIMARY KEY (Date_ID, Aircraft_ID), 
+                        FOREIGN KEY (Date_ID) REFERENCES Dates(Date_ID), 
                         FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
                     );
 
@@ -103,8 +104,6 @@ class DW:
         # Link DuckDB and pygrametl
         self.conn_pygrametl = pygrametl.ConnectionWrapper(self.conn_duckdb)
 
-        # ======================================================================================================= Dimension and fact table objects
-        
         # =======================================================================================================
         # Dimensions
         # =======================================================================================================
@@ -121,24 +120,22 @@ class DW:
             lookupatts=['Aircraft_Registration_Code']
         )
 
+        self.dates_dim = CachedDimension(
+            name='Dates',
+            key='Date_ID',
+            attributes=[
+                'Full_Date', 'Day_Num', 'Month_Num', 'Year'
+            ],
+            lookupatts=['Full_Date'] # Unique date lookup
+        )
+        
         self.months_dim = CachedDimension(
             name='Months',
             key='Month_ID',
             attributes=['Month_Num', 'Year'],
             lookupatts=['Month_Num', 'Year']
         )
-
-        self.days_dim = CachedDimension(
-            name='Days',
-            key='Day_ID',
-            attributes=['Day_Num', 'Month_ID'],
-            lookupatts=['Day_Num', 'Month_ID']
-        )
         
-        self.dates_dim = SnowflakedDimension(
-           [(self.days_dim, self.months_dim)]
-        )
-
         self.reporters_dim = CachedDimension(
             name='Reporters',
             key='Reporter_ID',
@@ -152,7 +149,7 @@ class DW:
 
         self.flight_fact = FactTable(
             name='Flight_operations_Daily',
-            keyrefs=['Day_ID', 'Aircraft_ID'],
+            keyrefs=['Date_ID', 'Aircraft_ID'],
             measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM']
         )
 
@@ -167,9 +164,8 @@ class DW:
             keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
             measures=['Log_Count']
         )
-
-
-    # TODO: Rewrite the queries exemplified in "extract.py"
+        
+    # Example query methods for analysis
     def query_utilization(self):
         result = self.conn_duckdb.execute("""
             SELECT ...

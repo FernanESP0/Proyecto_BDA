@@ -12,8 +12,8 @@ from datetime import timezone, datetime
 from itertools import chain
 from pygrametl.datasources import SQLSource, CSVSource # type: ignore
 import calendar
-from pygrametl.tables import CachedDimension, SnowflakedDimension # type: ignore
-from typing import Iterator, Dict, Any, Tuple, List, Set, Optional
+from pygrametl.tables import CachedDimension # type: ignore
+from typing import Iterator, Dict, Any, Tuple, List, Set
 
 
 # Configure logging
@@ -132,20 +132,44 @@ def _extract_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: S
             yield row['reportingdate']
 
 
-def get_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSource, maintenance_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
-    """Generates unique records for the Day and Month dimensions, enriching the month data."""
+def generate_date_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: SQLSource, maint_src: SQLSource) -> Iterator[Dict[str, Any]]:
+    """
+    Generates unique, enriched rows for the Date dimension.
+    """
     dates_seen: Set[str] = set()
+
+    date_iterator = _extract_dates(flights_dates_src, tech_logs_src, maint_src)
     
-    # Process all dates from a single, combined source stream
-    for date_obj in _extract_dates(flights_dates_src, technical_logbooks_dates_src, maintenance_dates_src):
-        date_str = build_dateCode(date_obj)
+    for date_obj in date_iterator:
+        date_str = build_dateCode(date_obj) 
         if date_str not in dates_seen:
             dates_seen.add(date_str)
-            
-            day_num, month_num, year = get_date(date_str)
+            day_num, month_num, year = get_date(date_str) 
             
             yield {
+                'Full_Date': date_str,
                 'Day_Num': day_num,
+                'Month_Num': month_num,
+                'Year': year,
+            }
+
+
+def generate_month_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: SQLSource, maint_src: SQLSource) -> Iterator[Dict[str, Any]]:
+    """
+    Generates unique, efficient rows for the Month dimension.
+    """
+    months_seen: Set[Tuple[int, int]] = set()
+    
+    date_iterator = _extract_dates(flights_dates_src, tech_logs_src, maint_src)
+    
+    for date_obj in date_iterator:
+        # Extract only month and year
+        month_num = date_obj.month
+        year = date_obj.year
+        
+        if (year, month_num) not in months_seen:
+            months_seen.add((year, month_num))
+            yield {
                 'Month_Num': month_num,
                 'Year': year,
             }
@@ -159,7 +183,7 @@ def get_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSou
 def get_flights_operations_daily(
     flights_src: SQLSource,
     operation_interruption_src: SQLSource,
-    dates_dim: SnowflakedDimension,
+    dates_dim: CachedDimension,
     aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """
@@ -184,15 +208,10 @@ def get_flights_operations_daily(
         try:
             # 1. Look up Surrogate Keys
             dep_date = row['scheduleddeparture']
-            day_num, month_num, year = get_date(build_dateCode(dep_date))
-            day_id = dates_dim.ensure({
-                    'Day_Num': day_num,
-                    'Month_Num': month_num,
-                    'Year': year
-            })
+            date_id = dates_dim.lookup({'Full_Date': build_dateCode(dep_date)}) 
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
-            fact_key = (day_id, aircraft_id)
+            fact_key = (date_id, aircraft_id)
             if fact_key not in daily_aggregates:
                 daily_aggregates[fact_key] = {'FH': 0, 'Takeoffs': 0, 'DFC': 0, 'CFC': 0, 'TDM': 0}
 
@@ -227,9 +246,9 @@ def get_flights_operations_daily(
             
     # 5. Yield the final aggregated rows
     print("Yielding final daily flight facts...")
-    for (day_id, aircraft_id), measures in tqdm(daily_aggregates.items(), desc="Finalizing Daily Facts"):
+    for (date_id, aircraft_id), measures in tqdm(daily_aggregates.items(), desc="Finalizing Daily Facts"):
         yield {
-            'Day_ID': day_id,
+            'Date_ID': date_id,
             'Aircraft_ID': aircraft_id,
             'FH': measures['FH'],
             'Takeoffs': int(measures['Takeoffs']),
