@@ -71,7 +71,7 @@ def get_logbooks_info() -> SQLSource:
     """
     Extract all technical logbook entries necessary from the PostgreSQL source.
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders')
+    return SQLSource(conn, 'SELECT workorderid, aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders')
 
 
 def get_reporters_info() -> SQLSource: 
@@ -93,7 +93,7 @@ def get_flights() -> SQLSource:
     """
     Extract flight information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights')
+    return SQLSource(conn, 'SELECT id, aircraftregistration, scheduleddeparture, scheduledarrival, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights')
 
 
 def get_flight_dates() -> SQLSource:
@@ -121,7 +121,7 @@ def get_postflightreports() -> SQLSource:
     """
     Extract post flight report information from the PostgreSQL source. 
     """
-    return SQLSource(conn, 'SELECT * FROM "AMOS".postflightreports')
+    return SQLSource(conn, 'SELECT pfrid, aircraftregistration, tlborder FROM "AMOS".postflightreports')
 
 
 def get_delays_info() -> SQLSource:

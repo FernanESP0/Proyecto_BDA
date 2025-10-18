@@ -12,10 +12,12 @@ if __name__ == '__main__':
         # =====================================================================
         print("--- [PHASE 1] Initializing DW and Extracting from Sources ---")
         dw = DW(create=True)
+        cleaning = True  # Set to True to perform data cleaning
 
         print("Extracting data from CSV sources")
         # CSV Sources
         aircraft_manuf_src = extract.get_aircraft_manufacturer_info()
+        aircraft_manuf_src_for_cleaning = extract.get_aircraft_manufacturer_info()
         maint_personnel_src = extract.get_maintenance_personnel()
         print("CSV sources extracted.")
 
@@ -38,16 +40,28 @@ if __name__ == '__main__':
         # =====================================================================
         # 2. Proceed with Data Quality Checks
         # =====================================================================
-        
-        #print("Performing data quality checks...")
-        
-        #flights_src = transform.check_and_fix_1st_and_2nd_BR(flights_src)
-        #postflightreports_src = transform.check_and_fix_3rd_BR(postflightreports_src, aircraft_manuf_src)
+        if cleaning:
+            print("\n--- [PHASE 2]  Performing Data Quality Checks ---")
+
+            try:
+                flights_src = transform.check_and_fix_1st_BR(flights_src)
+                flights_src = transform.check_and_fix_2nd_BR(flights_src)
+                postflightreports_src = transform.check_and_fix_3rd_BR(postflightreports_src, aircraft_manuf_src_for_cleaning)
+                logbooks_src = transform.get_valid_technical_logbooks(postflightreports_src, logbooks_src)
+
+            except Exception as e:
+                print(f"Error occurred during data quality checks: {e}")
+
+            print("Data quality checks completed.")
+ 
         
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first
         # =====================================================================
-        print("\n--- [PHASE 2] Loading Dimension Tables ---")
+        if cleaning:
+            print("\n--- [PHASE 3] Loading Dimension Tables After Cleaning ---")
+        else:
+            print("\n--- [PHASE 2] Loading Dimension Tables Without Cleaning ---")
 
         # Load Aircrafts Dimension
         aircraft_iterator = transform.get_aircrafts(aircraft_manuf_src)
@@ -57,7 +71,7 @@ if __name__ == '__main__':
         reporter_iterator = transform.get_reporters(reporter_src, maint_personnel_src)
         load.load_reporters(dw, reporter_iterator)
 
-        # Load Dates Dimension 
+        # Load Dates Dimension
         date_iterator = transform.generate_date_dimension_rows(flights_dates_src_for_date, reporting_dates_src_for_date, maintenance_dates_src_for_date)
         load.load_dates(dw, date_iterator)
         
@@ -72,7 +86,10 @@ if __name__ == '__main__':
         # =====================================================================
         # 4. LOAD FACT TABLES: Populate fact tables using populated dimensions
         # =====================================================================
-        print("\n--- [PHASE 3] Loading Fact Tables ---")
+        if cleaning:
+            print("\n--- [PHASE 4] Loading Fact Tables After Cleaning ---")
+        else:
+            print("\n--- [PHASE 3] Loading Fact Tables Without Cleaning ---")
 
         # Load Flight Operations Daily Fact Table
         fod_iterator = transform.get_flights_operations_daily(

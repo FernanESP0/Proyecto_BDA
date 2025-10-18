@@ -13,7 +13,7 @@ from itertools import chain
 from pygrametl.datasources import SQLSource, CSVSource # type: ignore
 import calendar
 from pygrametl.tables import CachedDimension # type: ignore
-from typing import Iterator, Dict, Any, Tuple, List, Set
+from typing import Iterator, Dict, Any, Tuple, Set, Union
 
 
 # Configure logging
@@ -181,7 +181,7 @@ def generate_month_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: S
 
 
 def get_flights_operations_daily(
-    flights_src: SQLSource,
+    flights_src: Union[SQLSource, Iterator[Dict[str, Any]]],
     operation_interruption_src: SQLSource,
     dates_dim: CachedDimension,
     aircrafts_dim: CachedDimension
@@ -207,8 +207,8 @@ def get_flights_operations_daily(
     for row in tqdm(flights_src, desc="Processing Flights"):
         try:
             # 1. Look up Surrogate Keys
-            dep_date = row['scheduleddeparture']
-            date_id = dates_dim.lookup({'Full_Date': build_dateCode(dep_date)}) 
+            dep_date = build_dateCode(row['scheduleddeparture'])
+            date_id = dates_dim.lookup({'Full_Date': dep_date})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
             fact_key = (date_id, aircraft_id)
@@ -323,7 +323,7 @@ def get_aircrafts_monthly_snapshot(
 
 
 def get_logbooks(
-    technical_logbooks_src: SQLSource, 
+    technical_logbooks_src: Union[SQLSource, Iterator[Dict[str, Any]]],
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension, 
     reporters_dim: CachedDimension
@@ -361,62 +361,94 @@ def get_logbooks(
 # =============================================================================
 
 
-def to_utc(dt: datetime) -> datetime:
-    """Ensures a datetime object is timezone-aware and in UTC."""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def check_and_fix_1st_and_2nd_BR(flights_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def check_and_fix_1st_BR(flights_data: SQLSource) -> Iterator[Dict[str, Any]]:
     """
-    Applies BR1 and BR2 to flight data.
+    Applies BR1 to flight data.
     - BR1: actualArrival must be after actualDeparture (swaps if needed).
-    - BR2: Two non-cancelled flights of the same aircraft cannot overlap (ignores the earlier one).
     """
-    # --- 1st BR ---
     for row in tqdm(flights_data, desc="Applying BR1 (Arrival/Departure Swap)"):
-        arr = to_utc(row['actualarrival'])
-        dep = to_utc(row['actualdeparture'])
+        arr = row['actualarrival']
+        dep = row['actualdeparture']
         if arr and dep and arr < dep:
-            logging.info(f"BR1 Violation: Swapping arrival and departure for flight {row.get('flight_id', 'N/A')}.")
+            logging.info(f"BR1 Violation: Swapping arrival and departure for flight {row['aircraftregistration']} with id: {row['id']}.")
             row['actualarrival'], row['actualdeparture'] = row['actualdeparture'], row['actualarrival']
+        yield row
 
-    # --- 2nd BR ---
-    aircraft_flights: Dict[str, List[Dict[str, Any]]] = {}
+
+def check_and_fix_2nd_BR(flights_data: Iterator[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+    """
+    Applies BR2 to flight data.
+    - BR2: No overlapping *actual* flights for the same aircraft.
+    - NEW Logic: Keeps the *last* flight in a chain and ignores the preceding overlaps.
+    """
+    
+    # --- 1. Materialize (Inevitable) ---
+    # We must use ACTUAL times for physical overlap checks.
+    aircraft_flights: Dict[str, list[Dict[str, Any]]] = {}
+    print("Grouping flights by aircraft for BR2 check...")
     for row in flights_data:
+        # Only process flights that actually flew.
+        # This prevents crashes from 'None' values during sorting/comparison.
         if not row['cancelled']:
             aircraft_id = row['aircraftregistration']
             aircraft_flights.setdefault(aircraft_id, []).append(row)
-
+            
+    # --- 2. Check for overlaps ---
     ignored_flights: Set[Any] = set()
     for aircraft_id, flights in tqdm(aircraft_flights.items(), desc="Applying BR2 (Flight Overlap)"):
-        flights.sort(key=lambda x: to_utc(x['scheduleddeparture']))
+        
+        # *** Sort by ACTUAL departure time ***
+        flights.sort(key=lambda x: x['actualdeparture'])
+        
+        # Iterate through all flights *except the last one*
         for i in range(len(flights) - 1):
-            f1, f2 = flights[i], flights[i+1]
-            if to_utc(f1['scheduledarrival']) > to_utc(f2['scheduleddeparture']):
-                logging.info(f"BR2 Violation: Overlap for aircraft {aircraft_id}. Ignoring flight {f1.get('id', 'N/A')}.")
-                ignored_flights.add(f1.get('id'))
+            f1 = flights[i]      # This is the "first" flight in the pair
+            f2 = flights[i+1]    # This is the "current" or "next" flight
+            
+            # If the "first" flight's arrival is AFTER the "next" flight's departure...
+            if f1['actualarrival'] > f2['actualdeparture']:
+                # Overlap! This "first" flight (f1) is invalid.
+                logging.info(f"BR2 Violation: Overlap for {aircraft_id}. Ignoring flight {f1['id']} (keeping {f2['id']}).")
+                ignored_flights.add(f1['id'])
+            # Note: We don't need an 'else' block. We simply proceed.
+            # f2 will become f1 in the next iteration and be checked against f3.
 
-    return [f for f in flights_data if f.get('id') not in ignored_flights]
+    # --- 3. Yield non-ignored flights (same as your original code) ---
+    print("Yielding non-overlapping flights...")
+    for aircraft_id, flights in aircraft_flights.items():
+        for flight in flights:
+            if flight['id'] not in ignored_flights:
+                yield flight
 
 
 def check_and_fix_3rd_BR(
-    post_flights_reports: List[Dict[str, Any]], 
+    post_flights_reports: SQLSource, 
     aircrafts_src: CSVSource
-) -> List[Dict[str, Any]]:
+) -> Iterator[Dict[str, Any]]:
     """
     Applies BR3 to post-flight reports.
     - BR3: Aircraft registration must exist in the master aircraft list (ignores report if not).
     """
-    aircraft_reg_codes: Set[str] = {row['aircraft_reg_code'] for row in aircrafts_src}
-    aircrafts_src.reset() # Reset source in case it's used again
-
-    valid_reports: List[Dict[str, Any]] = []
+    aircraft_reg_codes: set[str] = {row['aircraft_reg_code'] for row in aircrafts_src}
     for row in tqdm(post_flights_reports, desc="Applying BR3 (Aircraft Existence)"):
-        if row['aircraftregistration'] in aircraft_reg_codes:
-            valid_reports.append(row)
+        if row['aircraftregistration'] not in aircraft_reg_codes:
+            yield row
+            logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
+
+
+def get_valid_technical_logbooks(
+    post_flights_reports: Iterator[Dict[str, Any]],
+    technical_logbooks: SQLSource
+) -> Iterator[Dict[str, Any]]:
+    """
+    Filters technical logbook reports to include only those with valid technical logbook entries.
+    A valid entry has to be associated with the aircraft registration of the post-flight report which will
+    be the aircraft worker ID in technical logbook source.
+    """
+    not_valid_aircraft_worker_ids: set[int] = {row['tlborder'] for row in post_flights_reports if row['tlborder'] is not None}
+    
+    for row in tqdm(technical_logbooks, desc="Filtering Valid Technical Logbooks"):
+        if row['workorderid'] not in not_valid_aircraft_worker_ids: # Valid entry
+            yield row
         else:
-            logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row.get('pfrid', 'N/A')}.")
-            
-    return valid_reports
+            logging.warning(f"Invalid Technical Logbook: Aircraft Worker ID {row['workorderid']} not found in valid aircraft registrations. Ignoring logbook {row['workorderid']}.")
