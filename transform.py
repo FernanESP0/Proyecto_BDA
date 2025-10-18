@@ -8,7 +8,7 @@ It also includes functions for cleaning data according to predefined business ru
 
 from tqdm import tqdm # type: ignore
 import logging
-from datetime import timezone, datetime
+from datetime import datetime
 from itertools import chain
 from pygrametl.datasources import SQLSource, CSVSource # type: ignore
 import calendar
