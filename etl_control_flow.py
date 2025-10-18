@@ -53,7 +53,6 @@ if __name__ == '__main__':
                 print(f"Error occurred during data quality checks: {e}")
 
             print("Data quality checks completed.")
- 
         
         # =====================================================================
         # 3. LOAD DIMENSIONS: Populate all dimension tables first

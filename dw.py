@@ -1,3 +1,12 @@
+"""
+Data Warehouse (DW) Interface and Schema Module
+
+This module provides the DW class, which defines the complete DuckDB database 
+schema (dimensions and facts) for the data warehouse.
+It also initializes and contains all pygrametl objects (CachedDimension, FactTable)
+used by the ETL process to load data.
+"""
+
 import os
 import sys
 import duckdb  # type: ignore

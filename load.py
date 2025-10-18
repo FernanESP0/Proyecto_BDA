@@ -9,10 +9,6 @@ pygrametl data warehouse object and a data iterator as input.
 from tqdm import tqdm # type: ignore
 from typing import Iterator, Dict, Any
 
-# For type hinting the 'dw' object. You would replace 'Any' with your
-# actual DataWarehouse class if you have one defined.
-# from dw_schema import DataWarehouse 
-
 # =============================================================================
 # Dimension Table Loading Functions
 # =============================================================================
