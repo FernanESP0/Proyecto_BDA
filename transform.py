@@ -19,6 +19,7 @@ from typing import Iterator, Dict, Any, Tuple, Set, Union
 # Configure logging
 logging.basicConfig(
     filename='cleaning.log',
+    filemode='w',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
