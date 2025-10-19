@@ -137,7 +137,10 @@ def get_delays_info() -> SQLSource:
 
 
 def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
-    # TODO: Implement a function to generate a dictionary with one entry per manufacturer and a list of aircraft identifiers as values
+    """
+    Helper function to get a mapping of aircraft manufacturers to their respective aircraft registration codes.
+    Used in baseline query implementations.
+    """
     aircrafts: dict[str, list[str]] = {}
     for row in get_aircraft_manufacturer_info():
         manufacturer = row['aircraft_manufacturer']

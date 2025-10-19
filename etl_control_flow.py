@@ -12,7 +12,7 @@ if __name__ == '__main__':
         # =====================================================================
         print("--- [PHASE 1] Initializing DW and Extracting from Sources ---")
         dw = DW(create=True)
-        cleaning = True  # Set to True to perform data cleaning if desired
+        cleaning = False  # Set to True to perform data cleaning if desired
 
         print("Extracting data from CSV sources")
         # CSV Sources
