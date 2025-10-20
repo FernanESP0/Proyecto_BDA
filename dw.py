@@ -117,7 +117,7 @@ class DW:
         # Dimensions
         # =======================================================================================================
 
-        self.aircrafts_dim = CachedDimension(
+        self.aircrafts_dim = CachedDimension( 
             name='Aircrafts',
             key='Aircraft_ID',
             attributes=[
@@ -126,7 +126,7 @@ class DW:
                 'Aircraft_Model',
                 'Aircraft_Manufacturer_Class'
             ],
-            lookupatts=['Aircraft_Registration_Code']
+            lookupatts=['Aircraft_Registration_Code'], 
         )
 
         self.dates_dim = CachedDimension(
@@ -135,43 +135,44 @@ class DW:
             attributes=[
                 'Full_Date', 'Day_Num', 'Month_Num', 'Year'
             ],
-            lookupatts=['Full_Date'] # Unique date lookup
+            lookupatts=['Full_Date'],
         )
-        
+
         self.months_dim = CachedDimension(
             name='Months',
             key='Month_ID',
             attributes=['Month_Num', 'Year'],
-            lookupatts=['Month_Num', 'Year']
+            lookupatts=['Month_Num', 'Year'],
         )
         
         self.reporters_dim = CachedDimension(
             name='Reporters',
             key='Reporter_ID',
             attributes=['Reporter_Class', 'Report_Airport_Code'],
-            lookupatts=['Reporter_Class', 'Report_Airport_Code']
+            lookupatts=['Reporter_Class', 'Report_Airport_Code'], 
         )
 
-        # =======================================================================================================
+        # =====================================================================
         # Fact Tables
-        # =======================================================================================================
+        # =====================================================================
 
+        # Las FactTable TAMBIÉN necesitan el connectionwrapper
         self.flight_fact = FactTable(
             name='Flight_operations_Daily',
             keyrefs=['Date_ID', 'Aircraft_ID'],
-            measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM']
+            measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM'], 
         )
 
         self.aircraft_monthly_fact = FactTable(
             name='Aircraft_Monthly_Summary',
             keyrefs=['Month_ID', 'Aircraft_ID'],
-            measures=['ADIS', 'ADOSS', 'ADOSU']
+            measures=['ADIS', 'ADOSS', 'ADOSU'], 
         )
 
         self.logbook_fact = FactTable(
             name='Logbooks',
             keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
-            measures=['Log_Count']
+            measures=['Log_Count'],
         )
         
     # Example query methods for analysis

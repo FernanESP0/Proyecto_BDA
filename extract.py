@@ -40,7 +40,7 @@ except Exception as e:
 
 
 # ============================================================
-#  Extracting functions of CSV files
+#  Extracting functions of CSV files (Sin cambios)
 # ============================================================
 
 def get_aircraft_manufacturer_info() -> CSVSource:
@@ -63,72 +63,133 @@ def get_maintenance_personnel() -> CSVSource:
     )
 
 # ============================================================
-# Extracting function of PostgreSQL
+# Extracting function of PostgreSQL sources
 # ============================================================
 
 
-def get_logbooks_info() -> SQLSource:
+def get_aggregated_logbooks() -> SQLSource:
     """
-    Extract all technical logbook entries necessary from the PostgreSQL source.
+    Extracts aggregated logbook entries by month, aircraft, and reporter.
     """
-    return SQLSource(conn, 'SELECT workorderid, aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders')
+    query = """
+        SELECT
+            aircraftregistration,
+            executionplace,
+            reporteurclass,
+            DATE_PART('year', reportingdate) AS "year",
+            DATE_PART('month', reportingdate) AS "month_num",
+            COUNT(*) AS log_count
+        FROM "AMOS".technicallogbookorders
+        WHERE reportingdate IS NOT NULL 
+          AND aircraftregistration IS NOT NULL
+          AND executionplace IS NOT NULL
+          AND reporteurclass IS NOT NULL
+        GROUP BY
+            aircraftregistration,
+            executionplace,
+            reporteurclass,
+            DATE_PART('year', reportingdate),
+            DATE_PART('month', reportingdate)
+    """
+    return SQLSource(conn, query)
 
 
 def get_reporters_info() -> SQLSource: 
     """
-    Extract technical logbook information from the PostgreSQL source. In specific,
-    extract only the reporter IDs from the table "AMOS".technicallogbookorders.
+    Extracts unique combinations of reporters (for the dimension).
     """
-    return SQLSource(conn, 'SELECT executionplace, reporteurclass FROM "AMOS".technicallogbookorders')
+    return SQLSource(conn, 'SELECT DISTINCT executionplace, reporteurclass FROM "AMOS".technicallogbookorders')
 
 
-def get_reporting_dates() -> SQLSource:
+def get_all_dates() -> SQLSource:
     """
-    Extract technical logbook reporting dates from the PostgreSQL source. 
+    Extracts all relevant dates from all tables in a single query.
     """
-    return SQLSource(conn, 'SELECT reportingdate FROM "AMOS".technicallogbookorders')
+    query = """
+        (SELECT reportingdate AS "date" FROM "AMOS".technicallogbookorders)
+        UNION
+        (SELECT scheduleddeparture AS "date" FROM "AIMS".flights)
+        UNION
+        (SELECT scheduleddeparture AS "date" FROM "AIMS".maintenance)
+    """
+    return SQLSource(conn, query)
 
 
-def get_flights() -> SQLSource:
+def get_aggregated_flights() -> SQLSource:
     """
-    Extract flight information from the PostgreSQL source. 
+    Extracts aggregated flight data by day and aircraft.
     """
-    return SQLSource(conn, 'SELECT id, aircraftregistration, scheduleddeparture, scheduledarrival, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights')
+    query = """
+        SELECT
+            f.aircraftregistration,
+            DATE(f.scheduleddeparture) AS "full_date",
+
+            -- Sum of Flight Hours (FH)
+            SUM(CASE WHEN f.cancelled = false THEN EXTRACT(EPOCH FROM f.actualarrival - f.actualdeparture) / 3600.0
+                     ELSE 0 END) AS fh,
+
+            -- Count of Takeoffs
+            SUM(CASE WHEN f.cancelled = false THEN 1 ELSE 0 END) AS takeoffs,
+            
+            -- Count of Cancelled Flights
+            SUM(CASE WHEN f.cancelled = true THEN 1 ELSE 0 END) AS cfc,
+
+            -- Count of Delayed Flights
+            SUM(CASE WHEN f.cancelled = false AND (EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60 > 15)
+                    THEN 1 ELSE 0 END) AS dfc,
+
+            -- Sum of Delay Minutes (Total Delay Minutes)
+            -- (Using the logic from the baseline query)
+            SUM(CASE WHEN f.cancelled = false AND (EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60 > 15)
+                     THEN EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60
+                     ELSE 0 END) AS tdm
+            
+        FROM "AIMS".flights f
+        GROUP BY
+            f.aircraftregistration,
+            DATE(f.scheduleddeparture)
+    """
+    return SQLSource(conn, query)
 
 
-def get_flight_dates() -> SQLSource:
+def get_aggregated_maintenance() -> SQLSource:
     """
-    Extract flight departure dates from the PostgreSQL source. 
+    Extracts aggregated maintenance data by month and aircraft.
+    Calculates the percentage of service days directly in the DB.
     """
-    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".flights')
+    query = """
+        SELECT
+            m.aircraftregistration,
+            DATE_PART('year', m.scheduleddeparture) AS "year",
+            DATE_PART('month', m.scheduleddeparture) AS "month_num",
 
-
-def get_maintenance_info() -> SQLSource:
+            -- Sum of percentage of days out-of-service scheduled (ADOSS)
+            SUM(
+                CASE WHEN m.programmed = true THEN
+                    LEAST(
+                        (EXTRACT(EPOCH FROM m.scheduledarrival - m.scheduleddeparture) / 3600.0) / 24.0,
+                        1.0  -- LLimit of 1.0 (24h)
+                    )
+                ELSE 0 END
+            ) AS adoss_pct_total,
+            
+            -- Sum of percentage of days out-of-service unscheduled (ADOSU)
+            SUM(
+                CASE WHEN m.programmed = false THEN
+                    LEAST(
+                        (EXTRACT(EPOCH FROM m.scheduledarrival - m.scheduleddeparture) / 3600.0) / 24.0,
+                        1.0
+                    )
+                ELSE 0 END
+            ) AS adosu_pct_total
+            
+        FROM "AIMS".maintenance m
+        GROUP BY
+            m.aircraftregistration,
+            DATE_PART('month', m.scheduleddeparture),
+            DATE_PART('year', m.scheduleddeparture)
     """
-    Extract maintenance information from the PostgreSQL source.
-    """
-    return SQLSource(conn, 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance')
-
-
-def get_maintenance_dates() -> SQLSource:
-    """
-    Extract maintenance dates from the PostgreSQL source.
-    """
-    return SQLSource(conn, 'SELECT scheduleddeparture FROM "AIMS".maintenance')
-
-
-def get_postflightreports() -> SQLSource:
-    """
-    Extract post flight report information from the PostgreSQL source. 
-    """
-    return SQLSource(conn, 'SELECT pfrid, aircraftregistration, tlborder FROM "AMOS".postflightreports')
-
-
-def get_delays_info() -> SQLSource:
-    """
-    Extract delay information from the PostgreSQL source. 
-    """
-    return SQLSource(conn, 'SELECT aircraftregistration, starttime, duration, delaycode FROM "AMOS".operationinterruption')
+    return SQLSource(conn, query)
 
 
 # =======================================================================================================

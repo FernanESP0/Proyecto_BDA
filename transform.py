@@ -9,11 +9,10 @@ It also includes functions for cleaning data according to predefined business ru
 from tqdm import tqdm # type: ignore
 import logging
 from datetime import datetime
-from itertools import chain
 from pygrametl.datasources import SQLSource, CSVSource # type: ignore
 import calendar
 from pygrametl.tables import CachedDimension # type: ignore
-from typing import Iterator, Dict, Any, Tuple, Set, Union
+from typing import Iterator, Dict, Any, Tuple, Set
 
 
 # Configure logging
@@ -43,51 +42,12 @@ def get_date(date_str: str) -> Tuple[int, int, int]:
     return (day_num, month_num, year)
 
 
-def calculate_minutes(time_str: str) -> float:
-    """Converts a 'HH:MM:SS' string into total minutes."""
-    if not time_str:
-        return 0.0
-    try:
-        h, m, s = map(int, time_str.split(':'))
-        return h * 60 + m + s / 60
-    except ValueError:
-        logging.warning(f"Invalid time format: {time_str}")
-        return 0.0
-
-
-def calculate_hours(start_time: str, end_time: str) -> float:
-    """Calculates the duration in hours between two timestamp strings."""
-    if not start_time or not end_time:
-        return 0.0
-    # Note: Expects a very specific format.
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
-        try:
-            start_dt = datetime.strptime(start_time, fmt)
-            end_dt = datetime.strptime(end_time, fmt)
-            duration = end_dt - start_dt
-            return duration.total_seconds() / 3600.0
-        except ValueError:
-            continue  # try next format
-
-    logging.warning(f"Could not parse timestamps: {start_time}, {end_time}")
-    return 0.0
-
-
-def calculate_perct_of_day(hours: float) -> float:
-    """Calculates what percentage of a 24-hour day the given hours represent."""
-    if hours < 0:
-        return 0.0
-    # Cap at 100% in case of data errors leading to >24h duration
-    return min((hours / 24.0), 1.0)
-
-
 # =============================================================================
-# Dimension Table Transformations
+# Dimension Table Transformations 
 # =============================================================================
-
 
 def get_aircrafts(aircraft_src: CSVSource) -> Iterator[Dict[str, str]]:
-    """Transforms aircraft source data for the Aircraft dimension."""
+    """Transforms raw aircraft data for the Aircraft dimension."""
     for row in aircraft_src:
         yield {
             'Aircraft_Registration_Code': row['aircraft_reg_code'],
@@ -101,7 +61,6 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
     """Merges and transforms pilots and maintenance personnel for the Reporter dimension."""
     reporters_seen: Set[tuple[str, str]] = set()
     
-    # Process maintenance personnel (MAREP)
     for row in maintenance_personnel_src:
         if ('MAREP', row['airport']) not in reporters_seen:
             reporters_seen.add(('MAREP', row['airport']))
@@ -110,7 +69,6 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
                 'Report_Airport_Code': row['airport'],
             }
             
-    # Process the remaining reporters (PIREP or MAREP) for a given airport
     for row in reporter_src:
         if (row['reporteurclass'], row['executionplace']) not in reporters_seen:
             reporters_seen.add((row['reporteurclass'], row['executionplace']))
@@ -120,28 +78,15 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
             }
 
 
-def _extract_dates(flights_dates_src: SQLSource, technical_logbooks_dates_src: SQLSource, maintenance_dates_src: SQLSource) -> Iterator[datetime]:
-    """Helper generator to yield all unique date objects from different sources."""
-    # chain() efficiently combines multiple iterators
-    for row in chain(flights_dates_src, technical_logbooks_dates_src, maintenance_dates_src):
-        # This condition will be true for rows from flights_src OR maintenance_src
-        if 'scheduleddeparture' in row and row['scheduleddeparture']:
-            yield row['scheduleddeparture']
-        # This condition will only be evaluated for rows from other sources,
-        # like technical_logbooks_dates_src.
-        elif 'reportingdate' in row and row['reportingdate']:
-            yield row['reportingdate']
-
-
-def generate_date_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: SQLSource, maint_src: SQLSource) -> Iterator[Dict[str, Any]]:
+def generate_date_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
     """
     Generates unique, enriched rows for the Date dimension.
+    (Ahora usa la fuente 'all_dates_src' unificada).
     """
     dates_seen: Set[str] = set()
-
-    date_iterator = _extract_dates(flights_dates_src, tech_logs_src, maint_src)
     
-    for date_obj in date_iterator:
+    for row in all_dates_src:
+        date_obj = row['date']
         date_str = build_dateCode(date_obj) 
         if date_str not in dates_seen:
             dates_seen.add(date_str)
@@ -155,16 +100,15 @@ def generate_date_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: SQ
             }
 
 
-def generate_month_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: SQLSource, maint_src: SQLSource) -> Iterator[Dict[str, Any]]:
+def generate_month_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
     """
     Generates unique, efficient rows for the Month dimension.
+    (Ahora usa la fuente 'all_dates_src' unificada).
     """
     months_seen: Set[Tuple[int, int]] = set()
     
-    date_iterator = _extract_dates(flights_dates_src, tech_logs_src, maint_src)
-    
-    for date_obj in date_iterator:
-        # Extract only month and year
+    for row in all_dates_src:
+        date_obj = row['date']
         month_num = date_obj.month
         year = date_obj.year
         
@@ -177,195 +121,129 @@ def generate_month_dimension_rows(flights_dates_src: SQLSource, tech_logs_src: S
 
 
 # =============================================================================
-# Fact Table Transformations
+# Fact Table Transformations 
 # =============================================================================
 
 
 def get_flights_operations_daily(
-    flights_src: Union[SQLSource, Iterator[Dict[str, Any]]],
-    operation_interruption_src: SQLSource,
+    aggregated_flights_src: SQLSource,  
     dates_dim: CachedDimension,
     aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
     """
-    Aggregates flight data by day and aircraft to create daily operational facts.
-    This version is optimized to correctly and efficiently calculate delay metrics.
+    Transforms the data from PRE-AGGREGATED daily flight operations.
+    La agregación (SUM/COUNT) ya se hizo en la BD.
     """
-    
-    # Pre-aggregate total delay minutes by delay code.
-    # This avoids a slow, nested loop. We create a lookup dictionary first.
-    print("Pre-aggregating delay information for performance...")
-    tdm_lookup: Dict[Tuple[int, str, str], float] = {}
-    for row in tqdm(operation_interruption_src, desc="Processing Delays"):
-        delay_code = row['delaycode']
-        # Sum the duration for each delay code
-        tdm_lookup[(delay_code, row['aircraftregistration'], build_dateCode(row['starttime']))] = tdm_lookup.get((delay_code, row['aircraftregistration'], build_dateCode(row['starttime'])), 0) + calculate_minutes(str(row['duration']))
-
-    # Dictionary to aggregate final measures for the fact table
-    daily_aggregates: Dict[Tuple[int, int], Dict[str, float]] = {}
-
-    print("Aggregating daily flight operations...")
-    for row in tqdm(flights_src, desc="Processing Flights"):
+    print("Transforming pre-aggregated daily flight facts...")
+    for row in tqdm(aggregated_flights_src, desc="Transforming Daily Facts"):
         try:
             # 1. Look up Surrogate Keys
-            dep_date = build_dateCode(row['scheduleddeparture'])
-            date_id = dates_dim.lookup({'Full_Date': dep_date})
+            date_str = build_dateCode(row['full_date'])
+            date_id = dates_dim.lookup({'Full_Date': date_str})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
-            fact_key = (date_id, aircraft_id)
-            if fact_key not in daily_aggregates:
-                daily_aggregates[fact_key] = {'FH': 0, 'Takeoffs': 0, 'DFC': 0, 'CFC': 0, 'TDM': 0}
-
-            # 2. Handle cancelled flights
-            if row['cancelled'] or not row['actualdeparture']:
-                daily_aggregates[fact_key]['CFC'] += 1
-                continue # Skip to the next flight
-
-            # 3. Calculate base measures for non-cancelled flights
-            fh = calculate_hours(str(row['actualdeparture']), str(row['actualarrival']))
-            takeoffs = 1
-            
-            # --- CORRECT DELAY LOGIC ---
-            delayed_flight_count = 0
-            total_delay_minutes = 0.0
-            
-            # A flight is considered delayed if it has a delay code.
-            if row['delaycode'] is not None:
-                # This flight counts as one delayed flight.
-                delayed_flight_count = 1
-                # Use the pre-aggregated lookup to get the total minutes for this code.
-                total_delay_minutes = tdm_lookup.get((row['delaycode'], row['aircraftregistration'], build_dateCode(row['scheduleddeparture'])), 0)
-
-            # 4. Add all measures to the daily aggregates
-            daily_aggregates[fact_key]['FH'] += fh
-            daily_aggregates[fact_key]['Takeoffs'] += takeoffs
-            daily_aggregates[fact_key]['DFC'] += delayed_flight_count # DFC is the count of delayed flights
-            daily_aggregates[fact_key]['TDM'] += total_delay_minutes
-
+            # 2. Yield the row
+            yield {
+                'Date_ID': date_id,
+                'Aircraft_ID': aircraft_id,
+                'FH': row['fh'],
+                'Takeoffs': int(row['takeoffs']),
+                'DFC': int(row['dfc']),
+                'CFC': int(row['cfc']),
+                'TDM': int(round(row['tdm']))
+            }
         except (KeyError, TypeError) as e:
-            logging.warning(f"Skipping flight record due to missing key or data: {e}. Row: {row}")
-            
-    # 5. Yield the final aggregated rows
-    print("Yielding final daily flight facts...")
-    for (date_id, aircraft_id), measures in tqdm(daily_aggregates.items(), desc="Finalizing Daily Facts"):
-        yield {
-            'Date_ID': date_id,
-            'Aircraft_ID': aircraft_id,
-            'FH': measures['FH'],
-            'Takeoffs': int(measures['Takeoffs']),
-            'DFC': int(measures['DFC']), # Delayed Flight Count
-            'CFC': int(measures['CFC']), # Cancelled Flight Count
-            'TDM': int(round(measures['TDM'])) # Total Delay Minutes
-        }
+            logging.warning(f"Skipping aggregated flight record due to missing key: {e}. Row: {row}")
 
 
 def get_aircrafts_monthly_snapshot(
-    maintenance_src: SQLSource, 
+    aggregated_maintenance_src: SQLSource, 
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
-    """Aggregates maintenance data to create a monthly snapshot of aircraft service days."""
-    
-    monthly_out_of_service_data: Dict[Tuple[int, int], Dict[str, Any]] = {}
-
-    print("Aggregating monthly aircraft snapshots...")
-    for row in tqdm(maintenance_src, desc="Processing Maintenance"):
+    """
+    Transforms the pre-aggregated monthly snapshot data.
+    Applies the final business logic (ADIS) to the pre-calculated sums.
+    """
+    print("Transforming pre-aggregated monthly aircraft facts...")
+    for row in tqdm(aggregated_maintenance_src, desc="Transforming Monthly Facts"):
         try:
-            # Assumes maintenance records have start and end timestamps
-            start_date = row['scheduleddeparture']
-            end_date = row['scheduledarrival']
+            # 1. Look up Surrogate Keys
+            year_val = int(row['year'])
+            month_val = int(row['month_num'])
             
-            _, month_num, year = get_date(build_dateCode(start_date))
             month_id = months_dim.lookup({
-                'Month_Num': month_num,
-                'Year': year
+                'Month_Num': month_val,
+                'Year': year_val
             })
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
 
-            fact_key = (month_id, aircraft_id)
-            if fact_key not in monthly_out_of_service_data:
-                monthly_out_of_service_data[fact_key] = {
-                    'scheduled_pct': 0.0, 'unscheduled_pct': 0.0,
-                    'year': year, 'month_num': month_num
-                }
-
-            # Calculate duration as a percentage of a 24-hour day
-            duration_hours = calculate_hours(str(start_date), str(end_date))
-            pct_of_day = calculate_perct_of_day(duration_hours)
+            # 2. Apply business logic for ADIS
+            _, num_days_in_month = calendar.monthrange(year_val, month_val)
             
-            if row['programmed']:
-                monthly_out_of_service_data[fact_key]['scheduled_pct'] += pct_of_day
-            else:
-                monthly_out_of_service_data[fact_key]['unscheduled_pct'] += pct_of_day
+            adoss = row['adoss_pct_total']
+            adosu = row['adosu_pct_total']
+            ados = adoss + adosu
+            
+            adis = num_days_in_month - ados
+
+            # 3. Yield the row
+            yield {
+                'Month_ID': month_id,
+                'Aircraft_ID': aircraft_id,
+                'ADIS': adis,
+                'ADOSS': adoss,
+                'ADOSU': adosu
+            }
 
         except (KeyError, TypeError) as e:
-            logging.warning(f"Skipping maintenance record due to missing key or data: {e}. Row: {row}")
-
-    print("Yielding final monthly aircraft facts...")
-    for (month_id, aircraft_id), data in tqdm(monthly_out_of_service_data.items(), desc="Finalizing Monthly Facts"):
-        _, num_days_in_month = calendar.monthrange(data['year'], data['month_num'])
-        
-        adoss = data['scheduled_pct']
-        adosu = data['unscheduled_pct']
-        
-        # Total out-of-service time, represented as an equivalent number of days
-        ados = adoss + adosu
-        
-        # In-service days is the total days in month minus the equivalent out-of-service days
-        adis = num_days_in_month - ados
-        
-        yield {
-            'Month_ID': month_id,
-            'Aircraft_ID': aircraft_id,
-            'ADIS': adis,
-            'ADOSS': adoss,
-            'ADOSU': adosu
-        }
+            logging.warning(f"Skipping aggregated maintenance record due to missing key: {e}. Row: {row}")
 
 
 def get_logbooks(
-    technical_logbooks_src: Union[SQLSource, Iterator[Dict[str, Any]]],
+    aggregated_logbooks_src: SQLSource, 
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension, 
     reporters_dim: CachedDimension
 ) -> Iterator[Dict[str, Any]]:
-    """Aggregates technical logbook entries by month, aircraft, and reporter."""
-    log_counts: Dict[Tuple[int, int, int], int] = {}
-
-    print("Aggregating logbook entries...")
-    for row in tqdm(technical_logbooks_src, desc="Processing Logbooks"):
+    """
+    Transforms the pre-aggregated logbook entries.
+    The aggregation (COUNT) has already been done in the DB.
+    """
+    print("Transforming pre-aggregated logbook entries...")
+    for row in tqdm(aggregated_logbooks_src, desc="Transforming Logbooks"):
         try:
-            rep_date = row['reportingdate']
-            _, month_num, year = get_date(build_dateCode(rep_date))
-            month_id = months_dim.lookup({'Month_Num': month_num, 'Year': year})
+            # 1. Look up Surrogate Keys
+            month_id = months_dim.lookup({
+                'Month_Num': int(row['month_num']), 
+                'Year': int(row['year'])
+            })
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            reporter_id = reporters_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
+            reporter_id = reporters_dim.lookup({
+                'Reporter_Class': row['reporteurclass'], 
+                'Report_Airport_Code': row['executionplace']
+            })
 
-            fact_key = (month_id, aircraft_id, reporter_id)
-            log_counts[fact_key] = log_counts.get(fact_key, 0) + 1
+            # 2. Yield the row
+            yield {
+                'Month_ID': month_id,
+                'Aircraft_ID': aircraft_id,
+                'Reporter_ID': reporter_id,
+                'Log_Count': int(row['log_count'])
+            }
 
         except KeyError as e:
-            logging.warning(f"Skipping logbook record due to missing dimension key: {e}. Row: {row}")
-
-    print("Yielding final logbook facts...")
-    for (month_id, aircraft_id, reporter_id), count in tqdm(log_counts.items(), desc="Finalizing Logbooks"):
-        yield {
-            'Month_ID': month_id,
-            'Aircraft_ID': aircraft_id,
-            'Reporter_ID': reporter_id,
-            'Log_Count': count
-        }
+            logging.warning(f"Skipping aggregated logbook record due to missing dimension key: {e}. Row: {row}")
 
 
 # =============================================================================
-# Business Rules (BR) Cleaning Functions
+# Business Rules (BR) Cleaning Functions (Con correcciones de lógica)
 # =============================================================================
 
 
 def check_and_fix_1st_BR(flights_data: SQLSource) -> Iterator[Dict[str, Any]]:
     """
-    Applies BR1 to flight data.
-    - BR1: actualArrival must be after actualDeparture (swaps if needed).
+    Applies BR1 by swapping arrival and departure times if they are in the wrong order.
     """
     for row in tqdm(flights_data, desc="Applying BR1 (Arrival/Departure Swap)"):
         arr = row['actualarrival']
@@ -378,43 +256,27 @@ def check_and_fix_1st_BR(flights_data: SQLSource) -> Iterator[Dict[str, Any]]:
 
 def check_and_fix_2nd_BR(flights_data: Iterator[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
     """
-    Applies BR2 to flight data.
-    - BR2: No overlapping *actual* flights for the same aircraft.
-    - NEW Logic: Keeps the *last* flight in a chain and ignores the preceding overlaps.
+    Applies BR2 by checking for overlapping flights for the same aircraft.
     """
-    
-    # --- 1. Materialize (Inevitable) ---
-    # We must use ACTUAL times for physical overlap checks.
     aircraft_flights: Dict[str, list[Dict[str, Any]]] = {}
     print("Grouping flights by aircraft for BR2 check...")
     for row in flights_data:
-        # Only process flights that actually flew.
-        # This prevents crashes from 'None' values during sorting/comparison.
         if not row['cancelled']:
             aircraft_id = row['aircraftregistration']
             aircraft_flights.setdefault(aircraft_id, []).append(row)
             
-    # --- 2. Check for overlaps ---
     ignored_flights: Set[Any] = set()
     for aircraft_id, flights in tqdm(aircraft_flights.items(), desc="Applying BR2 (Flight Overlap)"):
-        
-        # *** Sort by ACTUAL departure time ***
         flights.sort(key=lambda x: x['actualdeparture'])
         
-        # Iterate through all flights *except the last one*
         for i in range(len(flights) - 1):
-            f1 = flights[i]      # This is the "first" flight in the pair
-            f2 = flights[i+1]    # This is the "current" or "next" flight
+            f1 = flights[i]
+            f2 = flights[i+1]
             
-            # If the "first" flight's arrival is AFTER the "next" flight's departure...
             if f1['actualarrival'] > f2['actualdeparture']:
-                # Overlap! This "first" flight (f1) is invalid.
                 logging.info(f"BR2 Violation: Overlap for {aircraft_id}. Ignoring flight {f1['id']} (keeping {f2['id']}).")
                 ignored_flights.add(f1['id'])
-            # Note: We don't need an 'else' block. We simply proceed.
-            # f2 will become f1 in the next iteration and be checked against f3.
 
-    # --- 3. Yield non-ignored flights (same as your original code) ---
     print("Yielding non-overlapping flights...")
     for aircraft_id, flights in aircraft_flights.items():
         for flight in flights:
@@ -427,13 +289,15 @@ def check_and_fix_3rd_BR(
     aircrafts_src: CSVSource
 ) -> Iterator[Dict[str, Any]]:
     """
-    Applies BR3 to post-flight reports.
-    - BR3: Aircraft registration must exist in the master aircraft list (ignores report if not).
+    Applies BR3 by filtering out reports linked to non-existent aircraft.
     """
     aircraft_reg_codes: set[str] = {row['aircraft_reg_code'] for row in aircrafts_src}
+    
     for row in tqdm(post_flights_reports, desc="Applying BR3 (Aircraft Existence)"):
-        if row['aircraftregistration'] not in aircraft_reg_codes:
-            yield row
+        if row['aircraftregistration'] in aircraft_reg_codes:
+            yield row # El código de aeronave es válido, procesar la fila
+        else:
+            # La aeronave no existe, ignorar la fila
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
 
 
@@ -442,14 +306,14 @@ def get_valid_technical_logbooks(
     technical_logbooks: SQLSource
 ) -> Iterator[Dict[str, Any]]:
     """
-    Filters technical logbook reports to include only those with valid technical logbook entries.
-    A valid entry has to be associated with the aircraft registration of the post-flight report which will
-    be the aircraft worker ID in technical logbook source.
+    Filters technical logbooks to only include those linked to valid post-flight reports.
     """
-    not_valid_aircraft_worker_ids: set[int] = {row['tlborder'] for row in post_flights_reports if row['tlborder'] is not None}
+    # Este conjunto contiene los 'tlborder' de reportes VÁLIDOS (después de BR3)
+    valid_tlb_order_ids: set[int] = {row['tlborder'] for row in post_flights_reports if row['tlborder'] is not None}
     
     for row in tqdm(technical_logbooks, desc="Filtering Valid Technical Logbooks"):
-        if row['workorderid'] not in not_valid_aircraft_worker_ids: # Valid entry
+        if row['workorderid'] in valid_tlb_order_ids: # La entrada es válida
             yield row
         else:
-            logging.warning(f"Invalid Technical Logbook: Aircraft Worker ID {row['workorderid']} not found in valid aircraft registrations. Ignoring logbook {row['workorderid']}.")
+            # La entrada no es válida (o no está en un reporte válido), ignorar
+            logging.warning(f"Invalid Technical Logbook: Work order ID {row['workorderid']} not found in valid post-flight reports. Ignoring logbook.")
