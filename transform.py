@@ -235,7 +235,7 @@ def get_logbooks(
 
 
 # =============================================================================
-# Business Rules (BR) Cleaning Functions (Con correcciones de lógica)
+# Business Rules (BR) Cleaning Functions 
 # =============================================================================
 
 
@@ -293,9 +293,9 @@ def check_and_fix_3rd_BR(
     
     for row in tqdm(post_flights_reports, desc="Applying BR3 (Aircraft Existence)"):
         if row['aircraftregistration'] in aircraft_reg_codes:
-            yield row # El código de aeronave es válido, procesar la fila
+            yield row # The aircraft exists
         else:
-            # La aeronave no existe, ignorar la fila
+            # The aircraft does not exist, ignore the row
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
 
 
@@ -306,12 +306,12 @@ def get_valid_technical_logbooks(
     """
     Filters technical logbooks to only include those linked to valid post-flight reports.
     """
-    # Este conjunto contiene los 'tlborder' de reportes VÁLIDOS (después de BR3)
+    # This set contains the 'tlborder' of VALID reports (after BR3)
     valid_tlb_order_ids: set[int] = {row['tlborder'] for row in post_flights_reports if row['tlborder'] is not None}
     
     for row in tqdm(technical_logbooks, desc="Filtering Valid Technical Logbooks"):
-        if row['workorderid'] in valid_tlb_order_ids: # La entrada es válida
+        if row['workorderid'] in valid_tlb_order_ids: # The entry is valid
             yield row
         else:
-            # La entrada no es válida (o no está en un reporte válido), ignorar
+            # The entry is not valid (or not in a valid report), ignore
             logging.warning(f"Invalid Technical Logbook: Work order ID {row['workorderid']} not found in valid post-flight reports. Ignoring logbook.")
