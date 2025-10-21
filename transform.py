@@ -12,8 +12,9 @@ from datetime import datetime
 from pygrametl.datasources import SQLSource, CSVSource # type: ignore
 import calendar
 from pygrametl.tables import CachedDimension # type: ignore
-from typing import Iterator, Dict, Any, Tuple, Set
-
+from typing import Iterator, Tuple, Set
+import pandas as pd
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -23,11 +24,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-
 # =============================================================================
 # Helper Functions
 # =============================================================================
-
 
 def build_dateCode(date: datetime) -> str:
     """Builds a 'YYYY-MM-DD' string from a datetime object."""
@@ -41,13 +40,14 @@ def get_date(date_str: str) -> Tuple[int, int, int]:
     day_num = int(date_str[8:10])
     return (day_num, month_num, year)
 
-
 # =============================================================================
-# Dimension Table Transformations 
+# Dimension Table Transformations
 # =============================================================================
 
-def get_aircrafts(aircraft_src: CSVSource) -> Iterator[Dict[str, str]]:
-    """Transforms raw aircraft data for the Aircraft dimension."""
+def get_aircrafts(aircraft_src: CSVSource) -> Iterator:
+    """
+    Transforms raw aircraft data into the structure required for the Aircraft dimension.
+    """
     for row in aircraft_src:
         yield {
             'Aircraft_Registration_Code': row['aircraft_reg_code'],
@@ -57,10 +57,14 @@ def get_aircrafts(aircraft_src: CSVSource) -> Iterator[Dict[str, str]]:
         }
 
 
-def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource) -> Iterator[Dict[str, str]]:
-    """Merges and transforms pilots and maintenance personnel for the Reporter dimension."""
+def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource) -> Iterator:
+    """
+    Transforms raw reporter and maintenance personnel data into the structure required for the Reporters dimension.
+    Ensures uniqueness based on (Reporter_Class, Report_Airport_Code).
+    """
     reporters_seen: Set[tuple[str, str]] = set()
-    
+
+    # Process maintenance personnel (MAREP)
     for row in maintenance_personnel_src:
         if ('MAREP', row['airport']) not in reporters_seen:
             reporters_seen.add(('MAREP', row['airport']))
@@ -68,7 +72,8 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
                 'Reporter_Class': 'MAREP',
                 'Report_Airport_Code': row['airport'],
             }
-            
+
+    # Process the remaining reporters (PIREP or MAREP) for a given airport
     for row in reporter_src:
         if (row['reporteurclass'], row['executionplace']) not in reporters_seen:
             reporters_seen.add((row['reporteurclass'], row['executionplace']))
@@ -78,158 +83,231 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
             }
 
 
-def generate_date_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
+def generate_date_dimension_rows(
+    flights_df: pd.DataFrame, 
+    tech_logs_df: pd.DataFrame, 
+    maint_df: pd.DataFrame
+) -> Iterator:
     """
-    Generates unique, enriched rows for the Date dimension.
+    Generates unique rows for the Date dimension using DataFrames.
     """
-    for row in all_dates_src:
-        date_obj = row['date']
-        
-        if date_obj is None:
-            continue
-            
+    # 1. Extract all dates
+    flight_dates = flights_df['scheduleddeparture']
+    tech_log_dates = tech_logs_df['reportingdate']
+    maint_dates = maint_df['scheduleddeparture']
+
+    # 2. Concatenate, drop nulls, and duplicates
+    all_dates = pd.concat([flight_dates, tech_log_dates, maint_dates], ignore_index=True)
+    unique_dates = all_dates.dt.normalize().unique()
+    
+    dates_df = pd.DataFrame(unique_dates, columns=['date_obj'])
+
+    print("Generating unique Date dimension rows...")
+    for date_obj in tqdm(dates_df['date_obj']):
+        date_str = build_dateCode(date_obj) 
+        day_num, month_num, year = get_date(date_str)
         yield {
-            'Full_Date': build_dateCode(date_obj),
-            'Day_Num': date_obj.day,
-            'Month_Num': date_obj.month,
-            'Year': date_obj.year,
+            'Full_Date': date_str,
+            'Day_Num': day_num,
+            'Month_Num': month_num,
+            'Year': year,
         }
 
 
-def generate_month_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
+def generate_month_dimension_rows(
+    flights_df: pd.DataFrame, 
+    tech_logs_df: pd.DataFrame, 
+    maint_df: pd.DataFrame
+) -> Iterator:
     """
-    Generates unique, efficient rows for the Month dimension.
+    Generates unique rows for the Month dimension using DataFrames.
     """
-    months_seen: Set[Tuple[int, int]] = set()
+    # 1. Extract all dates
+    flight_dates = flights_df['scheduleddeparture']
+    tech_log_dates = tech_logs_df['reportingdate']
+    maint_dates = maint_df['scheduleddeparture']
 
-    for row in all_dates_src:
-        date_obj = row['date']
-        
-        if date_obj is None:
-            continue
-        
-        month_key = (date_obj.year, date_obj.month)
-        
-        if month_key not in months_seen:
-            months_seen.add(month_key)
-            yield {
-                'Month_Num': date_obj.month,
-                'Year': date_obj.year,
-            }
+    # 2. Concatenate and get unique months/years
+    all_dates = pd.concat([flight_dates, tech_log_dates, maint_dates], ignore_index=True)
+
+    # Create a temporary DataFrame for 'drop_duplicates'
+    months_df = pd.DataFrame({
+        'Month_Num': all_dates.dt.month,
+        'Year': all_dates.dt.year
+    })
+    
+    unique_months_df = months_df.drop_duplicates()
+
+    print("Generating unique Month dimension rows...")
+    for row in tqdm(unique_months_df.to_dict('records'), desc="Generating Months"):
+        yield row
 
 
 # =============================================================================
 # Fact Table Transformations 
 # =============================================================================
 
-
-def get_flights_operations_daily(
-    aggregated_flights_src: SQLSource,  
+def get_flights_operations_daily(   
+    flights_df: pd.DataFrame,
     dates_dim: CachedDimension,
     aircrafts_dim: CachedDimension
-) -> Iterator[Dict[str, Any]]:
+) -> Iterator:
     """
-    Transforms the data from PRE-AGGREGATED daily flight operations.
-    La agregación (SUM/COUNT) ya se hizo en la BD.
+    Aggregates flight data by day and aircraft using pandas.
     """
-    print("Transforming pre-aggregated daily flight facts...")
-    for row in tqdm(aggregated_flights_src, desc="Transforming Daily Facts"):
-        try:
-            # 1. Look up Surrogate Keys
-            date_str = build_dateCode(row['full_date'])
-            date_id = dates_dim.lookup({'Full_Date': date_str})
-            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+    print("Vectorizing flight operations measures...")
+    df = flights_df.copy()
 
-            # 2. Yield the row
+    # 1. Pre-processing and vectorized calculations
+    df['dep_date_str'] = df['scheduleddeparture'].dt.strftime('%Y-%m-%d')
+    is_cancelled = df['cancelled'] | df['actualdeparture'].isnull()
+
+    # FH (Flight Hours)
+    duration = (df['actualarrival'] - df['actualdeparture']).dt.total_seconds() / 3600.0 # type: ignore[attr-defined]
+    df['FH'] = np.where(is_cancelled, 0.0, duration.fillna(0.0))
+    
+    # Takeoffs
+    df['Takeoffs'] = np.where(is_cancelled, 0, 1)
+    
+    # CFC (Cancelled Flight Count)
+    df['CFC'] = np.where(is_cancelled, 1, 0)
+
+    # --- Delay Logic ---
+    arrival_delay_minutes = (df['actualarrival'] - df['scheduledarrival']).dt.total_seconds() / 60.0 # type: ignore[attr-defined]
+
+    # Condition: (Has 'delaycode' AND delay is > 15 min)
+    is_delayed = (df['delaycode'].notnull()) & (arrival_delay_minutes > 15)
+    
+    df['TDM'] = np.where(is_delayed, arrival_delay_minutes.fillna(0.0), 0.0)
+    df['DFC'] = np.where(is_delayed, 1, 0)
+
+    # 2. Aggregation (Group By)
+    print("Aggregating daily flight operations (pandas)...")
+    agg_df = df.groupby(
+        ['dep_date_str', 'aircraftregistration']
+    ).agg(
+        FH=('FH', 'sum'),
+        Takeoffs=('Takeoffs', 'sum'),
+        CFC=('CFC', 'sum'),
+        DFC=('DFC', 'sum'),
+        TDM=('TDM', 'sum')
+    ).reset_index()
+
+    # 3. Lookup keys and Yield
+    print("Yielding final daily flight facts...")
+    for row in tqdm(agg_df.to_dict('records'), desc="Finalizing Daily Facts"):
+        try:
+            date_id = dates_dim.lookup({'Full_Date': row['dep_date_str']})
+            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+            
             yield {
                 'Date_ID': date_id,
                 'Aircraft_ID': aircraft_id,
-                'FH': row['fh'],
-                'Takeoffs': int(row['takeoffs']),
-                'DFC': int(row['dfc']),
-                'CFC': int(row['cfc']),
-                'TDM': int(round(row['tdm']))
+                'FH': row['FH'],
+                'Takeoffs': int(row['Takeoffs']),
+                'DFC': int(row['DFC']),
+                'CFC': int(row['CFC']),
+                'TDM': int(round(row['TDM']))
             }
         except (KeyError, TypeError) as e:
-            logging.warning(f"Skipping aggregated flight record due to missing key: {e}. Row: {row}")
+            logging.warning(f"Skipping aggregated flight record due to missing dimension key: {e}. Row: {row}")
 
 
 def get_aircrafts_monthly_snapshot(
-    aggregated_maintenance_src: SQLSource, 
+    maintenance_df: pd.DataFrame, 
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension
-) -> Iterator[Dict[str, Any]]:
+) -> Iterator:
     """
-    Transforms the pre-aggregated monthly snapshot data.
-    Applies the final business logic (ADIS) to the pre-calculated sums.
+    Aggregates maintenance data monthly using pandas.
     """
-    print("Transforming pre-aggregated monthly aircraft facts...")
-    for row in tqdm(aggregated_maintenance_src, desc="Transforming Monthly Facts"):
+    
+    print("Vectorizing monthly maintenance measures...")
+    df = maintenance_df.dropna(subset=['scheduleddeparture', 'scheduledarrival', 'aircraftregistration']).copy()
+
+    # 1. Pre-processing and vectorized calculations
+    df['year'] = df['scheduleddeparture'].dt.year
+    df['month_num'] = df['scheduleddeparture'].dt.month
+    
+    duration_hours = (df['scheduledarrival'] - df['scheduleddeparture']).dt.total_seconds() / 3600.0 # type: ignore[attr-defined]
+    pct_of_day = (duration_hours / 24.0).clip(lower=0.0, upper=1.0) # Ensure within [0,1]
+
+    df['scheduled_pct'] = np.where(df['programmed'], pct_of_day, 0.0)
+    df['unscheduled_pct'] = np.where(~df['programmed'], pct_of_day, 0.0)
+
+    # 2. Aggregation (Group By)
+    print("Aggregating monthly aircraft snapshots (pandas)...")
+    agg_df = df.groupby(
+        ['year', 'month_num', 'aircraftregistration']
+    ).agg(
+        ADOSS=('scheduled_pct', 'sum'),
+        ADOSU=('unscheduled_pct', 'sum')
+    ).reset_index()
+
+    # 3. Lookup keys and Yield
+    print("Yielding final monthly aircraft facts...")
+    for row in tqdm(agg_df.to_dict('records'), desc="Finalizing Monthly Facts"):
         try:
-            # 1. Look up Surrogate Keys
-            year_val = int(row['year'])
-            month_val = int(row['month_num'])
-            
-            month_id = months_dim.lookup({
-                'Month_Num': month_val,
-                'Year': year_val
-            })
+            month_id = months_dim.lookup({'Month_Num': row['month_num'], 'Year': row['year']})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-
-            # 2. Apply business logic for ADIS
-            _, num_days_in_month = calendar.monthrange(year_val, month_val)
             
-            adoss = row['adoss_pct_total']
-            adosu = row['adosu_pct_total']
-            ados = adoss + adosu
-            
+            _, num_days_in_month = calendar.monthrange(row['year'], row['month_num'])
+            ados = row['ADOSS'] + row['ADOSU']
             adis = num_days_in_month - ados
-
-            # 3. Yield the row
+            
             yield {
                 'Month_ID': month_id,
                 'Aircraft_ID': aircraft_id,
                 'ADIS': adis,
-                'ADOSS': adoss,
-                'ADOSU': adosu
+                'ADOSS': row['ADOSS'],
+                'ADOSU': row['ADOSU']
             }
-
         except (KeyError, TypeError) as e:
-            logging.warning(f"Skipping aggregated maintenance record due to missing key: {e}. Row: {row}")
+            logging.warning(f"Skipping aggregated maintenance record due to missing dimension key: {e}. Row: {row}")
 
 
 def get_logbooks(
-    aggregated_logbooks_src: SQLSource, 
+    technical_logbooks_df: pd.DataFrame,
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension, 
     reporters_dim: CachedDimension
-) -> Iterator[Dict[str, Any]]:
+) -> Iterator:
     """
-    Transforms the pre-aggregated logbook entries.
-    The aggregation (COUNT) has already been done in the DB.
+    Aggregates technical logbook data using pandas.
     """
-    print("Transforming pre-aggregated logbook entries...")
-    for row in tqdm(aggregated_logbooks_src, desc="Transforming Logbooks"):
-        try:
-            # 1. Look up Surrogate Keys
-            month_id = months_dim.lookup({
-                'Month_Num': int(row['month_num']), 
-                'Year': int(row['year'])
-            })
-            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            reporter_id = reporters_dim.lookup({
-                'Reporter_Class': row['reporteurclass'], 
-                'Report_Airport_Code': row['executionplace']
-            })
 
-            # 2. Yield the row
+    print("Vectorizing logbook measures...")
+    df = technical_logbooks_df.dropna(
+        subset=['reportingdate', 'aircraftregistration', 'reporteurclass', 'executionplace']
+    ).copy()
+    
+    # 1. Pre-processing
+    df['year'] = df['reportingdate'].dt.year
+    df['month_num'] = df['reportingdate'].dt.month
+
+    # 2. Aggregation (Group By)
+    print("Aggregating logbook entries (pandas)...")
+    agg_df = (
+        df.groupby(['year', 'month_num', 'aircraftregistration', 'reporteurclass', 'executionplace'])
+        .size()
+        .reset_index()
+        .rename(columns={0: 'Log_Count'})
+    )
+
+    # 3. Lookup keys and Yield
+    print("Yielding final logbook facts...")
+    for row in tqdm(agg_df.to_dict('records'), desc="Finalizing Logbooks"):
+        try:
+            month_id = months_dim.lookup({'Month_Num': row['month_num'], 'Year': row['year']})
+            aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
+            reporter_id = reporters_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
+
             yield {
                 'Month_ID': month_id,
                 'Aircraft_ID': aircraft_id,
                 'Reporter_ID': reporter_id,
-                'Log_Count': int(row['log_count'])
+                'Log_Count': row['Log_Count']
             }
-
         except KeyError as e:
             logging.warning(f"Skipping aggregated logbook record due to missing dimension key: {e}. Row: {row}")
 
@@ -238,80 +316,105 @@ def get_logbooks(
 # Business Rules (BR) Cleaning Functions 
 # =============================================================================
 
-
-def check_and_fix_1st_BR(flights_data: SQLSource) -> Iterator[Dict[str, Any]]:
+def check_and_fix_1st_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Applies BR1 by swapping arrival and departure times if they are in the wrong order.
+    Applies BR1 (Swap) in a vectorized manner.
     """
-    for row in tqdm(flights_data, desc="Applying BR1 (Arrival/Departure Swap)"):
-        arr = row['actualarrival']
-        dep = row['actualdeparture']
-        if arr and dep and arr < dep:
-            logging.info(f"BR1 Violation: Swapping arrival and departure for flight {row['aircraftregistration']} with id: {row['id']}.")
-            row['actualarrival'], row['actualdeparture'] = row['actualdeparture'], row['actualarrival']
-        yield row
+    print("Applying BR1 (Arrival/Departure Swap)...")
+    df = flights_df.copy()
+
+    # Condition: (arr and dep are not null) AND (arr < dep)
+    cond = (df['actualarrival'].notnull()) & (df['actualdeparture'].notnull()) & (df['actualarrival'] < df['actualdeparture'])
+
+    # Log violations
+    violations = df[cond]
+    if not violations.empty:
+        print(f"BR1 Violation: Found {len(violations)} flights with arrival before departure. Swapping...")
+        for flight_id in violations['id']:
+            logging.info(f"BR1 Violation: Swapping arrival and departure for flight id: {flight_id}.")
+
+    # Execute the swap
+    df.loc[cond, ['actualarrival', 'actualdeparture']] = df.loc[cond, ['actualdeparture', 'actualarrival']].values
+    
+    return df
 
 
-def check_and_fix_2nd_BR(flights_data: Iterator[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+def check_and_fix_2nd_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Applies BR2 by checking for overlapping flights for the same aircraft.
+    Applies BR2 (Overlap) in a vectorized manner (much faster).
     """
-    aircraft_flights: Dict[str, list[Dict[str, Any]]] = {}
-    print("Grouping flights by aircraft for BR2 check...")
-    for row in flights_data:
-        if not row['cancelled']:
-            aircraft_id = row['aircraftregistration']
-            aircraft_flights.setdefault(aircraft_id, []).append(row)
-            
-    ignored_flights: Set[Any] = set()
-    for aircraft_id, flights in tqdm(aircraft_flights.items(), desc="Applying BR2 (Flight Overlap)"):
-        flights.sort(key=lambda x: x['actualdeparture'])
-        
-        for i in range(len(flights) - 1):
-            f1 = flights[i]
-            f2 = flights[i+1]
-            
-            if f1['actualarrival'] > f2['actualdeparture']:
-                logging.info(f"BR2 Violation: Overlap for {aircraft_id}. Ignoring flight {f1['id']} (keeping {f2['id']}).")
-                ignored_flights.add(f1['id'])
+    print("Applying BR2 (Flight Overlap)...")
+    
+    # 1. Filter non-cancelled flights and sort by aircraft and departure time
+    df = flights_df[~flights_df['cancelled']].copy()
+    df.sort_values(by=['aircraftregistration', 'actualdeparture'], inplace=True)
 
-    print("Yielding non-overlapping flights...")
-    for aircraft_id, flights in aircraft_flights.items():
-        for flight in flights:
-            if flight['id'] not in ignored_flights:
-                yield flight
+    # 2. Find overlaps
+    # Compare the arrival of a flight with the *next* departure of the *same* aircraft
+    df['next_departure'] = df.groupby('aircraftregistration')['actualdeparture'].shift(-1)
+
+    # An overlap occurs if the arrival is *after* the *next* departure
+    overlap_cond = df['actualarrival'] > df['next_departure']
+
+    # 3. Identify and log the IDs to ignore (f1 in your original logic)
+    ignored_flights_ids = set(df[overlap_cond]['id'])
+    
+    if ignored_flights_ids:
+        print(f"BR2 Violation: Found {len(ignored_flights_ids)} overlapping flights to ignore.")
+        for flight_id in ignored_flights_ids:
+             logging.info(f"BR2 Violation: Overlap detected. Ignoring flight {flight_id}.")
+
+    # 4. Return the original DataFrame without the ignored flights
+    return flights_df[~flights_df['id'].isin(ignored_flights_ids)]
 
 
 def check_and_fix_3rd_BR(
-    post_flights_reports: SQLSource, 
-    aircrafts_src: CSVSource
-) -> Iterator[Dict[str, Any]]:
+    post_flights_reports_df: pd.DataFrame, 
+    aircrafts: CSVSource
+) -> pd.DataFrame:
     """
-    Applies BR3 by filtering out reports linked to non-existent aircraft.
+    Applies BR3 (Aircraft Existence) in a vectorized manner.
     """
-    aircraft_reg_codes: set[str] = {row['aircraft_reg_code'] for row in aircrafts_src}
+    print("Applying BR3 (Aircraft Existence)...")
+
+    # 1. Get valid codes
+    aircraft_reg_codes = set([row['aircraft_reg_code'] for row in aircrafts])
     
-    for row in tqdm(post_flights_reports, desc="Applying BR3 (Aircraft Existence)"):
-        if row['aircraftregistration'] in aircraft_reg_codes:
-            yield row # The aircraft exists
-        else:
-            # The aircraft does not exist, ignore the row
+    # 2. Find invalid rows
+    invalid_mask = ~post_flights_reports_df['aircraftregistration'].isin(aircraft_reg_codes)
+
+    # 3. Log violations
+    invalid_reports = post_flights_reports_df[invalid_mask]
+    if not invalid_reports.empty:
+        print(f"BR3 Violation: Found {len(invalid_reports)} reports with non-existent aircraft. Ignoring...")
+        for _, row in invalid_reports.iterrows():
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
+            
+    # 4. Return only invalid rows
+    return post_flights_reports_df[invalid_mask]
 
 
 def get_valid_technical_logbooks(
-    post_flights_reports: Iterator[Dict[str, Any]],
-    technical_logbooks: SQLSource
-) -> Iterator[Dict[str, Any]]:
+    post_flights_reports_df: pd.DataFrame,
+    technical_logbooks_df: pd.DataFrame
+) -> pd.DataFrame:
     """
-    Filters technical logbooks to only include those linked to valid post-flight reports.
+    Filter logbooks (vectorized).
     """
-    # This set contains the 'tlborder' of VALID reports (after BR3)
-    valid_tlb_order_ids: set[int] = {row['tlborder'] for row in post_flights_reports if row['tlborder'] is not None}
+    print("Filtering Valid Technical Logbooks...")
+
+    # 1. IDs to exclude
+    not_valid_aircraft_worker_ids = set(post_flights_reports_df['tlborder'].dropna())
     
-    for row in tqdm(technical_logbooks, desc="Filtering Valid Technical Logbooks"):
-        if row['workorderid'] in valid_tlb_order_ids: # The entry is valid
-            yield row
-        else:
-            # The entry is not valid (or not in a valid report), ignore
-            logging.warning(f"Invalid Technical Logbook: Work order ID {row['workorderid']} not found in valid post-flight reports. Ignoring logbook.")
+    # 2. Find invalid rows
+    invalid_mask = technical_logbooks_df['workorderid'].isin(not_valid_aircraft_worker_ids)
+
+    # 3. Log violations
+    invalid_logbooks = technical_logbooks_df[invalid_mask]
+    if not invalid_logbooks.empty:
+        print(f"Invalid Technical Logbooks: Found {len(invalid_logbooks)} entries to ignore.")
+        for _, row in invalid_logbooks.iterrows():
+             logging.warning(f"Invalid Technical Logbook: Entry {row['workorderid']} found in invalid reports. Ignoring.")
+
+    # 4. Return only valid rows
+    return technical_logbooks_df[~invalid_mask]

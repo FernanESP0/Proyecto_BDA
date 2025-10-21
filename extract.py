@@ -8,10 +8,8 @@ pre-defined baseline queries against the source database.
 
 from pathlib import Path
 import psycopg2 # type: ignore
-import pandas as pd
-# https://pygrametl.org
+import pandas as pd  # type: ignore
 from pygrametl.datasources import CSVSource, SQLSource  # type: ignore
-
 
 # Connect to the PostgreSQL source
 path = Path("db_conf.txt")
@@ -38,14 +36,13 @@ except Exception as e:
     print(e)
     raise ValueError(f"Database configuration file '{path.absolute()}' not properly formatted (check file 'db_conf.example.txt'.")
 
-
 # ============================================================
-#  Extracting functions of CSV files (Sin cambios)
+#  Extracting functions of CSV files (Versión DataFrame)
 # ============================================================
 
 def get_aircraft_manufacturer_info() -> CSVSource:
     """
-    Extract aircraft manufacturer information from the provided CSV file.
+    Extracts aircraft manufacturer information from a CSV file.
     """
     return CSVSource(
         open('aircraft-manufaturerinfo-lookup.csv', 'r', encoding='utf-8'),
@@ -54,8 +51,8 @@ def get_aircraft_manufacturer_info() -> CSVSource:
 
 
 def get_maintenance_personnel() -> CSVSource:
-    """ 
-    Extract maintenance personnel information from the provided CSV file.
+    """
+    Extracts maintenance personnel information from a CSV file.
     """
     return CSVSource(
         open('maintenance_personnel.csv', 'r', encoding='utf-8'),
@@ -63,139 +60,52 @@ def get_maintenance_personnel() -> CSVSource:
     )
 
 # ============================================================
-# Extracting function of PostgreSQL sources
+# Extracting function of PostgreSQL (Versión DataFrame)
 # ============================================================
 
-
-def get_aggregated_logbooks() -> SQLSource:
+def get_reporters_info() -> SQLSource:
     """
-    Extracts aggregated logbook entries by month, aircraft, and reporter.
+    Extacts all executionplace, reporteurclass unique combination from the PostgreSQL source
+    necessary for the Reporters dimension.
     """
-    query = """
-        SELECT
-            aircraftregistration,
-            executionplace,
-            reporteurclass,
-            DATE_PART('year', reportingdate) AS "year",
-            DATE_PART('month', reportingdate) AS "month_num",
-            COUNT(*) AS log_count
-        FROM "AMOS".technicallogbookorders
-        WHERE reportingdate IS NOT NULL 
-          AND aircraftregistration IS NOT NULL
-          AND executionplace IS NOT NULL
-          AND reporteurclass IS NOT NULL
-        GROUP BY
-            aircraftregistration,
-            executionplace,
-            reporteurclass,
-            DATE_PART('year', reportingdate),
-            DATE_PART('month', reportingdate)
-    """
+    query = 'SELECT DISTINCT executionplace, reporteurclass FROM "AMOS".technicallogbookorders'
     return SQLSource(conn, query)
 
 
-def get_reporters_info() -> SQLSource: 
+def get_logbooks_info_df() -> pd.DataFrame:
     """
-    Extracts unique combinations of reporters (for the dimension).
+    Extracts all technical logbooks necessary attributes in a DataFrame.
     """
-    return SQLSource(conn, 'SELECT DISTINCT executionplace, reporteurclass FROM "AMOS".technicallogbookorders')
+    query = 'SELECT workorderid, aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders'
+    return pd.read_sql(query, conn, parse_dates=['reportingdate'])
 
 
-def get_all_dates() -> SQLSource:
+def get_flights_df() -> pd.DataFrame:
     """
-    Extracts all relevant dates from all tables in a single query.
+    Extracts all flights necessary attributes in a DataFrame.
     """
-    query = """
-        (SELECT reportingdate AS "date" FROM "AMOS".technicallogbookorders)
-        UNION
-        (SELECT DATE(scheduleddeparture) AS "date" FROM "AIMS".flights)
-        UNION
-        (SELECT DATE(scheduleddeparture) AS "date" FROM "AIMS".maintenance)
-    """
-    return SQLSource(conn, query)
+    query = 'SELECT id, aircraftregistration, scheduleddeparture, scheduledarrival, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights'
+    return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival', 'actualdeparture', 'actualarrival'])
 
 
-def get_aggregated_flights() -> SQLSource:
+def get_maintenance_info_df() -> pd.DataFrame:
     """
-    Extracts aggregated flight data by day and aircraft.
+    Extracts all maintenance necessary attributes in a DataFrame.
     """
-    query = """
-        SELECT
-            f.aircraftregistration,
-            DATE(f.scheduleddeparture) AS "full_date",
-         
-            -- Sum of Flight Hours (FH)
-            SUM(CASE WHEN f.cancelled = false THEN EXTRACT(EPOCH FROM f.actualarrival - f.actualdeparture) / 3600.0
-                     ELSE 0 END) AS fh,
+    query = 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance'
+    return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival'])
 
-            -- Count of Takeoffs
-            SUM(CASE WHEN f.cancelled = false THEN 1 ELSE 0 END) AS takeoffs,
-            
-            -- Count of Cancelled Flights
-            SUM(CASE WHEN f.cancelled = true THEN 1 ELSE 0 END) AS cfc,
 
-            -- Count of Delayed Flights
-            SUM(CASE WHEN f.cancelled = false AND (EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60 > 15)
-                    THEN 1 ELSE 0 END) AS dfc,
-
-            -- Sum of Delay Minutes (Total Delay Minutes)
-            -- (Using the logic from the baseline query)
-            SUM(CASE WHEN f.cancelled = false AND (EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60 > 15)
-                     THEN EXTRACT(EPOCH FROM f.actualarrival - f.scheduledarrival) / 60
-                     ELSE 0 END) AS tdm
-            
-        FROM "AIMS".flights f
-        GROUP BY
-            f.aircraftregistration,
-            DATE(f.scheduleddeparture)
+def get_postflightreports_df() -> pd.DataFrame:
+    """ 
+    Extracts all post-flight reports necessary attributes in a DataFrame.
     """
-    return SQLSource(conn, query)
-
-
-def get_aggregated_maintenance() -> SQLSource:
-    """
-    Extracts aggregated maintenance data by month and aircraft.
-    Calculates the percentage of service days directly in the DB.
-    """
-    query = """
-        SELECT
-            m.aircraftregistration,
-            DATE_PART('year', m.scheduleddeparture) AS "year",
-            DATE_PART('month', m.scheduleddeparture) AS "month_num",
-
-            -- Sum of percentage of days out-of-service scheduled (ADOSS)
-            SUM(
-                CASE WHEN m.programmed = true THEN
-                    LEAST(
-                        (EXTRACT(EPOCH FROM m.scheduledarrival - m.scheduleddeparture) / 3600.0) / 24.0,
-                        1.0  -- LLimit of 1.0 (24h)
-                    )
-                ELSE 0 END
-            ) AS adoss_pct_total,
-            
-            -- Sum of percentage of days out-of-service unscheduled (ADOSU)
-            SUM(
-                CASE WHEN m.programmed = false THEN
-                    LEAST(
-                        (EXTRACT(EPOCH FROM m.scheduledarrival - m.scheduleddeparture) / 3600.0) / 24.0,
-                        1.0
-                    )
-                ELSE 0 END
-            ) AS adosu_pct_total
-            
-        FROM "AIMS".maintenance m
-        GROUP BY
-            m.aircraftregistration,
-            DATE_PART('month', m.scheduleddeparture),
-            DATE_PART('year', m.scheduleddeparture)
-    """
-    return SQLSource(conn, query)
-
+    query = 'SELECT pfrid, aircraftregistration, tlborder FROM "AMOS".postflightreports'
+    return pd.read_sql(query, conn)
 
 # =======================================================================================================
 # Baseline queries
 # =======================================================================================================
-
 
 def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
     """

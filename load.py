@@ -6,7 +6,7 @@ into the target data warehouse tables.
 """
 
 from tqdm import tqdm # type: ignore
-from typing import Iterator, Dict, Any
+from typing import Iterator, Any
 import pandas as pd 
 
 
@@ -15,7 +15,7 @@ import pandas as pd
 # (Estas funciones asumen que tu dw.py usa 'Dimension' como te indiqué)
 # =============================================================================
 
-def load_aircrafts(dw: Any, aircraft_iterator: Iterator[Dict[str, str]]) -> None:
+def load_aircrafts(dw: Any, aircraft_iterator: Iterator) -> None:
     """
     Load data into Aircraft dimension using pygrametl.ensure().
     """
@@ -24,7 +24,7 @@ def load_aircrafts(dw: Any, aircraft_iterator: Iterator[Dict[str, str]]) -> None
         dw.aircrafts_dim.ensure(row)
 
 
-def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None:
+def load_reporters(dw: Any, reporter_iterator: Iterator) -> None:
     """
     Load data into Reporters dimension using pygrametl.ensure().
     """
@@ -33,7 +33,7 @@ def load_reporters(dw: Any, reporter_iterator: Iterator[Dict[str, str]]) -> None
         dw.reporters_dim.ensure(row)
 
 
-def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
+def load_dates(dw: Any, date_iterator: Iterator) -> None:
     """
     Load data into Date dimension using pygrametl.ensure().
     """
@@ -42,7 +42,7 @@ def load_dates(dw: Any, date_iterator: Iterator[Dict[str, Any]]) -> None:
         dw.dates_dim.ensure(row)
 
 
-def load_months(dw: Any, month_iterator: Iterator[Dict[str, Any]]) -> None:
+def load_months(dw: Any, month_iterator: Iterator) -> None:
     """
     Load data into Month dimension using pygrametl.ensure().
     """
@@ -58,7 +58,7 @@ def load_months(dw: Any, month_iterator: Iterator[Dict[str, Any]]) -> None:
 def _load_fact_table_bulk(
     dw: Any, 
     table_name: str,
-    iterator: Iterator[Dict[str, Any]], 
+    iterator: Iterator, 
     table_desc: str
 ) -> None:
     """
@@ -92,7 +92,7 @@ def _load_fact_table_bulk(
 
     except Exception as e:
         print(f"Error during DuckDB bulk load: {e}")
-        conn.rollback() 
+        raise
     finally:
         # 6. Clean up (unregister) the virtual table
         try:
@@ -101,7 +101,7 @@ def _load_fact_table_bulk(
             pass # Ignore error
 
 
-def load_flights_operations_daily(dw: Any, flights_daily_iterator: Iterator[Dict[str, Any]]) -> None:
+def load_flights_operations_daily(dw: Any, flights_daily_iterator: Iterator) -> None:
     """
     Massive load of daily flight operations data.
     """
@@ -113,7 +113,7 @@ def load_flights_operations_daily(dw: Any, flights_daily_iterator: Iterator[Dict
     )
 
 
-def load_aircrafts_monthly_snapshot(dw: Any, aircraft_monthly_iterator: Iterator[Dict[str, Any]]) -> None:
+def load_aircrafts_monthly_snapshot(dw: Any, aircraft_monthly_iterator: Iterator) -> None:
     """
     Massive load of aircraft monthly snapshot data.
     """
@@ -125,7 +125,7 @@ def load_aircrafts_monthly_snapshot(dw: Any, aircraft_monthly_iterator: Iterator
     )
 
 
-def load_logbooks(dw: Any, logbooks_iterator: Iterator[Dict[str, Any]]) -> None:
+def load_logbooks(dw: Any, logbooks_iterator: Iterator) -> None:
     """
     Carga masiva de datos agregados de logbooks.
     """
