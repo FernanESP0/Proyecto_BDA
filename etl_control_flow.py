@@ -19,7 +19,7 @@ if __name__ == '__main__':
         # =====================================================================
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
-        cleaning = True  # Set to True to run cleaning
+        cleaning = False  # Set to True to run cleaning
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
