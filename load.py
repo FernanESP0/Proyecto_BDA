@@ -67,11 +67,11 @@ def _load_fact_table_bulk(
     print(f"Loading fact table: {table_desc} (DuckDB Bulk Method)...")
 
     # 1. Materialize the iterator into a DataFrame
-    print("   Materializing iterator into DataFrame...")
+    print("Materializing iterator into DataFrame...")
     df_to_insert = pd.DataFrame(iterator)
 
     if df_to_insert.empty:
-        print(f"   No data to load for {table_desc}.")
+        print(f"No data to load for {table_desc}.")
         return
 
     # 2. Get the NATIVE DuckDB connection (the one with .register())
@@ -80,7 +80,7 @@ def _load_fact_table_bulk(
 
     try:
         # 3. Register the DataFrame
-        conn.register(virtual_table_name, df_to_insert) # Esto funcionará
+        conn.register(virtual_table_name, df_to_insert) 
 
         # 4. Execute the bulk insert
         print(f"Bulk inserting {len(df_to_insert)} rows into {table_name}...")
@@ -88,10 +88,10 @@ def _load_fact_table_bulk(
 
         # 5. Commit the transaction
         conn.commit() 
-        print("   Load complete.")
+        print("Load complete.")
 
     except Exception as e:
-        print(f"   Error during DuckDB bulk load: {e}")
+        print(f"Error during DuckDB bulk load: {e}")
         conn.rollback() 
     finally:
         # 6. Clean up (unregister) the virtual table

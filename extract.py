@@ -108,9 +108,9 @@ def get_all_dates() -> SQLSource:
     query = """
         (SELECT reportingdate AS "date" FROM "AMOS".technicallogbookorders)
         UNION
-        (SELECT scheduleddeparture AS "date" FROM "AIMS".flights)
+        (SELECT DATE(scheduleddeparture) AS "date" FROM "AIMS".flights)
         UNION
-        (SELECT scheduleddeparture AS "date" FROM "AIMS".maintenance)
+        (SELECT DATE(scheduleddeparture) AS "date" FROM "AIMS".maintenance)
     """
     return SQLSource(conn, query)
 
@@ -123,7 +123,7 @@ def get_aggregated_flights() -> SQLSource:
         SELECT
             f.aircraftregistration,
             DATE(f.scheduleddeparture) AS "full_date",
-
+         
             -- Sum of Flight Hours (FH)
             SUM(CASE WHEN f.cancelled = false THEN EXTRACT(EPOCH FROM f.actualarrival - f.actualdeparture) / 3600.0
                      ELSE 0 END) AS fh,

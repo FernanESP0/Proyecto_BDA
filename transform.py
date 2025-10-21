@@ -81,42 +81,40 @@ def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource)
 def generate_date_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
     """
     Generates unique, enriched rows for the Date dimension.
-    (Ahora usa la fuente 'all_dates_src' unificada).
     """
-    dates_seen: Set[str] = set()
-    
     for row in all_dates_src:
         date_obj = row['date']
-        date_str = build_dateCode(date_obj) 
-        if date_str not in dates_seen:
-            dates_seen.add(date_str)
-            day_num, month_num, year = get_date(date_str) 
+        
+        if date_obj is None:
+            continue
             
-            yield {
-                'Full_Date': date_str,
-                'Day_Num': day_num,
-                'Month_Num': month_num,
-                'Year': year,
-            }
+        yield {
+            'Full_Date': build_dateCode(date_obj),
+            'Day_Num': date_obj.day,
+            'Month_Num': date_obj.month,
+            'Year': date_obj.year,
+        }
 
 
 def generate_month_dimension_rows(all_dates_src: SQLSource) -> Iterator[Dict[str, Any]]:
     """
     Generates unique, efficient rows for the Month dimension.
-    (Ahora usa la fuente 'all_dates_src' unificada).
     """
     months_seen: Set[Tuple[int, int]] = set()
-    
+
     for row in all_dates_src:
         date_obj = row['date']
-        month_num = date_obj.month
-        year = date_obj.year
         
-        if (year, month_num) not in months_seen:
-            months_seen.add((year, month_num))
+        if date_obj is None:
+            continue
+        
+        month_key = (date_obj.year, date_obj.month)
+        
+        if month_key not in months_seen:
+            months_seen.add(month_key)
             yield {
-                'Month_Num': month_num,
-                'Year': year,
+                'Month_Num': date_obj.month,
+                'Year': date_obj.year,
             }
 
 
