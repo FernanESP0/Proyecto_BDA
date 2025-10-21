@@ -1,0 +1,29 @@
+# requirements.txt
+# Generated: 2025-10-21
+# This file lists the third-party Python packages used across the project .py files.
+# The versions below are conservative constraints (lower-bound compatible ranges).
+# Adjust pins to match your deployment/CI environment or the versions installed in your virtualenv.
+
+# Core data processing
+pandas>=1.5,<3
+numpy>=1.24,<2
+
+# Database adapters and OLAP
+psycopg2-binary>=2.9,<3
+duckdb>=0.8.1,<1
+
+# ETL framework used in the code
+pygrametl>=3.8,<4
+
+# Utilities
+tqdm>=4.65,<5
+tabulate>=0.9,<1
+
+# Notes:
+# - Standard-library modules (time, os, sys, pathlib, logging, datetime, calendar, decimal, typing, warnings)
+#   are intentionally omitted.
+# - Some projects prefer exact pins (==); here we use ranges to avoid conflicts. If you need repeatable
+#   builds, convert to exact pins after confirming the working environment (e.g. pip freeze > requirements.txt).
+# - Type stubs: your editor complained about missing stubs for 'tabulate'. There is no widely-used
+#   'types-tabulate' package as of generation. The source already uses "# type:ignore" for that import
+#   (see `query_test.py`), which is a practical workaround for Pyright/mypy.
