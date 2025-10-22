@@ -237,6 +237,8 @@ def get_flights_operations_daily(
     # Condition: (Has 'delaycode' AND delay is > 15 min)
     is_delayed = (df['delaycode'].notnull()) & (arrival_delay_minutes > 15)
     
+    # Store only if delayed and arrival_delay_minutes > 15 because is the 
+    # info that will be used to compute TDM and DFC
     df['TDM'] = np.where(is_delayed, arrival_delay_minutes.fillna(0.0), 0.0)
     df['DFC'] = np.where(is_delayed, 1, 0)
 
