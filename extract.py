@@ -1,9 +1,17 @@
 """
 ETL Extraction Module
 
-Handles data extraction from PostgreSQL and CSV files.
-Provides raw data sources for the transformation stage and executes
-pre-defined baseline queries against the source database.
+This module centralizes all data-access responsibilities for the pipeline. It
+establishes a PostgreSQL connection based on a simple key=value configuration
+file, exposes convenience functions to read source data into pandas DataFrames
+or pygrametl data sources, and provides baseline analytical queries that run
+directly on the source database for comparison purposes.
+
+Conventions
+- Functions named get_* return raw inputs for the transform stage (DataFrames
+    or pygrametl sources) without modifying semantics.
+- Baseline queries (query_*_baseline) execute SQL against the original
+    operational schemas to enable quick validation of DW results.
 """
 
 from pathlib import Path
@@ -37,12 +45,16 @@ except Exception as e:
     raise ValueError(f"Database configuration file '{path.absolute()}' not properly formatted (check file 'db_conf.example.txt'.")
 
 # ============================================================
-#  Extracting functions of CSV files (Versión DataFrame)
+# CSV extraction helpers
 # ============================================================
 
 def get_aircraft_manufacturer_info() -> CSVSource:
     """
-    Extracts aircraft manufacturer information from a CSV file.
+    Open the aircraft-manufacturer lookup CSV as a pygrametl CSVSource.
+
+    Returns
+    - CSVSource iterable where each row exposes dictionary-like access with
+      keys used by the transform layer (e.g., 'aircraft_reg_code').
     """
     return CSVSource(
         open('aircraft-manufaturerinfo-lookup.csv', 'r', encoding='utf-8'),
@@ -52,7 +64,11 @@ def get_aircraft_manufacturer_info() -> CSVSource:
 
 def get_maintenance_personnel() -> CSVSource:
     """
-    Extracts maintenance personnel information from a CSV file.
+    Open the maintenance personnel CSV as a pygrametl CSVSource.
+
+    Returns
+    - CSVSource iterable with personnel attributes required by the reporters
+      dimension builder.
     """
     return CSVSource(
         open('maintenance_personnel.csv', 'r', encoding='utf-8'),
@@ -60,13 +76,15 @@ def get_maintenance_personnel() -> CSVSource:
     )
 
 # ============================================================
-# Extracting function of PostgreSQL (Versión DataFrame)
+# PostgreSQL extraction helpers
 # ============================================================
 
 def get_reporters_info() -> SQLSource:
     """
-    Extacts all executionplace, reporteurclass unique combination from the PostgreSQL source
-    necessary for the Reporters dimension.
+    Retrieve unique (executionplace, reporteurclass) combinations from AMOS.
+
+    Returns
+    - SQLSource yielding distinct pairs used to build the Reporters dimension.
     """
     query = 'SELECT DISTINCT executionplace, reporteurclass FROM "AMOS".technicallogbookorders'
     return SQLSource(conn, query)
@@ -74,7 +92,11 @@ def get_reporters_info() -> SQLSource:
 
 def get_logbooks_info_df() -> pd.DataFrame:
     """
-    Extracts all technical logbooks necessary attributes in a DataFrame.
+    Extract technical logbook order attributes required by the pipeline.
+
+    Returns
+    - pandas DataFrame with columns: workorderid, aircraftregistration,
+      executionplace, reporteurclass, reportingdate (parsed as datetime).
     """
     query = 'SELECT workorderid, aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders'
     return pd.read_sql(query, conn, parse_dates=['reportingdate'])
@@ -82,7 +104,11 @@ def get_logbooks_info_df() -> pd.DataFrame:
 
 def get_flights_df() -> pd.DataFrame:
     """
-    Extracts all flights necessary attributes in a DataFrame.
+    Extract flight attributes needed for utilization metrics.
+
+    Returns
+    - pandas DataFrame with scheduled and actual timestamps parsed as datetimes,
+      plus cancellation and delay code fields.
     """
     query = 'SELECT id, aircraftregistration, scheduleddeparture, scheduledarrival, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights'
     return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival', 'actualdeparture', 'actualarrival'])
@@ -90,15 +116,22 @@ def get_flights_df() -> pd.DataFrame:
 
 def get_maintenance_info_df() -> pd.DataFrame:
     """
-    Extracts all maintenance necessary attributes in a DataFrame.
+    Extract maintenance windows with schedule and programmability flags.
+
+    Returns
+    - pandas DataFrame with scheduled timestamps (parsed as datetime) and the
+      'programmed' boolean flag.
     """
     query = 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance'
     return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival'])
 
 
 def get_postflightreports_df() -> pd.DataFrame:
-    """ 
-    Extracts all post-flight reports necessary attributes in a DataFrame.
+    """
+    Extract post-flight report identifiers and links to technical logbook orders.
+
+    Returns
+    - pandas DataFrame with columns pfrid, aircraftregistration, tlborder.
     """
     query = 'SELECT pfrid, aircraftregistration, tlborder FROM "AMOS".postflightreports'
     return pd.read_sql(query, conn)
@@ -109,8 +142,11 @@ def get_postflightreports_df() -> pd.DataFrame:
 
 def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
     """
-    Helper function to get a mapping of aircraft manufacturers to their respective aircraft registration codes.
-    Used in baseline query implementations.
+    Build a mapping of manufacturer → list of aircraft registration codes.
+
+    Returns
+    - dict where keys are manufacturer names (e.g., 'Airbus', 'Boeing') and
+        values are lists of registration codes present in the CSV lookup.
     """
     aircrafts: dict[str, list[str]] = {}
     for row in get_aircraft_manufacturer_info():

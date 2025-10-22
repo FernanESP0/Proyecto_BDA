@@ -1,10 +1,13 @@
 """
-Data Warehouse (DW) Interface and Schema Module
+Data Warehouse (DW) interface and schema definition
 
-This module provides the DW class, which defines the complete DuckDB database 
-schema (dimensions and facts) for the data warehouse.
-It also initializes and contains all pygrametl objects (CachedDimension, FactTable)
-used by the ETL process to load data.
+Exposes a single DW class that encapsulates:
+- DuckDB database connection and schema DDL (dimensions and facts)
+- pygrametl integration (ConnectionWrapper, CachedDimensions, FactTables)
+
+The class aims to provide a simple surface for the ETL layers: callers can
+instantiate DW(create=True) to reset and create the schema, or DW() to reuse
+an existing database file.
 """
 
 import os
@@ -18,6 +21,18 @@ duckdb_filename = 'dw.duckdb'
 
 
 class DW:
+    """
+    Data Warehouse facade wrapping DuckDB and pygrametl constructs.
+
+    Parameters
+    - create: When True, removes any existing DuckDB file and recreates schema.
+
+    Attributes
+    - conn_duckdb: Native DuckDB connection used for DDL/DML and bulk inserts.
+    - conn_pygrametl: pygrametl ConnectionWrapper bound to conn_duckdb.
+    - <*_dim>: CachedDimension instances for all dimension tables.
+    - <*_fact>: FactTable instances for all fact tables.
+    """
     def __init__(self, create=False):
         if create and os.path.exists(duckdb_filename):
             os.remove(duckdb_filename)
@@ -110,7 +125,7 @@ class DW:
                 print("Error creating the DW tables:", e)
                 sys.exit(2)
 
-        # Link DuckDB and pygrametl
+    # Link DuckDB and pygrametl
         self.conn_pygrametl = pygrametl.ConnectionWrapper(self.conn_duckdb)
 
         # =======================================================================================================
@@ -155,8 +170,8 @@ class DW:
         # =====================================================================
         # Fact Tables
         # =====================================================================
-
-        # Las FactTable TAMBIÉN necesitan el connectionwrapper
+        
+        # FactTables also rely on the pygrametl connection wrapper
         self.flight_fact = FactTable(
             name='Flight_operations_Daily',
             keyrefs=['Date_ID', 'Aircraft_ID'],
@@ -177,24 +192,31 @@ class DW:
         
     # Example query methods for analysis
     def query_utilization(self):
+        """Placeholder: Example utilization query against the DW schema."""
         result = self.conn_duckdb.execute("""
             SELECT ...
             """).fetchall()
         return result
 
     def query_reporting(self):
+        """Placeholder: Example reporting query against the DW schema."""
         result = self.conn_duckdb.execute("""
             SELECT ...
             """).fetchall()
         return result
 
     def query_reporting_per_role(self):
+        """Placeholder: Example reporting per role query against the DW schema."""
         result = self.conn_duckdb.execute("""
             SELECT ...
             """).fetchall()
         return result
 
     def close(self):
+        """
+        Flush pending transactions and close both pygrametl and DuckDB connections.
+        Safe to call multiple times.
+        """
         self.conn_pygrametl.commit()
         self.conn_pygrametl.close()
 

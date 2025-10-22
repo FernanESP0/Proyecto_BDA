@@ -1,10 +1,29 @@
+"""
+ETL Orchestration Script
+
+This script coordinates the end-to-end ETL pipeline:
+
+1) Initialization: creates the DuckDB data warehouse schema (optionally resetting
+    the database file) and establishes connections.
+2) Extraction: pulls source data from PostgreSQL and CSV files into in-memory
+    structures (DataFrames and pygrametl data sources).
+3) Optional data quality checks: applies business-rule-based validation and
+    cleaning on the extracted data using vectorized pandas operations.
+4) Load: populates dimension tables first, then bulk-loads fact tables.
+5) Finalization: safely closes DW connections regardless of success or failure.
+
+Toggling data cleaning
+- Set the "cleaning" flag below to True to enable BR-based cleaning; otherwise
+  the pipeline loads the raw (baseline) datasets.
+"""
+
 from dw import DW
 import extract as extract
 import transform as transform
 import load as load
 import warnings
 
-# Suprime la advertencia específica de pandas/DBAPI
+# Suppress a specific pandas/DBAPI warning about non-SQLAlchemy connections
 warnings.filterwarnings(
     "ignore",
     message="pandas only supports SQLAlchemy connectable.*",
@@ -14,12 +33,12 @@ warnings.filterwarnings(
 if __name__ == '__main__':
     dw = None
     try:
-        # =====================================================================
-        # 1. INITIALIZATION: Create DW and Extract Data to DataFrames
-        # =====================================================================
+    # =====================================================================
+    # 1. INITIALIZATION: Create DW and extract data into memory
+    # =====================================================================
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
-        cleaning = False  # Set to True to run cleaning
+        cleaning = False  # Set to True to enable BR-based data cleaning
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
@@ -41,7 +60,7 @@ if __name__ == '__main__':
         if cleaning:
             print("\n--- [PHASE 2] Performing Data Quality Checks ---")
             try:
-                # Apply Business Rules (BR) Cleaning Functions
+                # Apply Business Rules (BR) cleaning functions
                 print("Applying Data Quality Checks and Cleaning...")
                 flights_df = transform.check_and_fix_1st_BR(flights_df)
                 flights_df = transform.check_and_fix_2nd_BR(flights_df)
@@ -64,7 +83,7 @@ if __name__ == '__main__':
             print("\n--- [PHASE 2] Skipping Data Quality Checks ---")
 
         # =====================================================================
-        # 3. LOAD DIMENSIONS TABLES
+    # 3. LOAD DIMENSION TABLES
         # =====================================================================
         print("\n--- [PHASE 3] Loading Dimension Tables ---")
 
@@ -128,7 +147,7 @@ if __name__ == '__main__':
 
     finally:
         # =====================================================================
-        # 5. CLOSE: Asegurar que la conexión a la BD siempre se cierre
+        # 5. CLOSE: Ensure the DW connection is always closed
         # =====================================================================
         if dw:
             dw.close()

@@ -1,9 +1,17 @@
 """
-ETL Transformation and Cleaning Script
+ETL Transformation and Data Quality Module
 
-This module contains all the functions required to transform raw source data 
-into the structures expected by the data warehouse dimensions and fact tables.
-It also includes functions for cleaning data according to predefined business rules.
+This module encapsulates vectorized transformations that reshape raw inputs
+from the extraction layer into structures expected by the DW dimensions and
+fact tables. It also includes data quality routines that implement business
+rules (BR) for detection and remediation of common issues.
+
+Principles
+- Favor pure, deterministic transformations over side effects; functions yield
+    dictionaries ready for loading or return new DataFrames.
+- Use pandas/numpy for performance and clarity; avoid per-row Python loops in
+    favor of vectorized operations and groupby aggregations.
+- Log data-quality violations to a file with enough context for triage.
 """
 
 from tqdm import tqdm # type: ignore
@@ -25,16 +33,32 @@ logging.basicConfig(
 )
 
 # =============================================================================
-# Helper Functions
+# Helper functions
 # =============================================================================
 
 def build_dateCode(date: datetime) -> str:
-    """Builds a 'YYYY-MM-DD' string from a datetime object."""
+    """
+    Format a datetime into an ISO-like date string (YYYY-MM-DD).
+
+    Parameters
+    - date: datetime to format (timezone-naive or aware; tz info is ignored).
+
+    Returns
+    - String with the date components zero-padded to 2 digits for month/day.
+    """
     return f"{date.year}-{date.month:02d}-{date.day:02d}"
 
 
 def get_date(date_str: str) -> Tuple[int, int, int]:
-    """Converts a 'YYYY-MM-DD' string into a (Day, Month, Year) tuple."""
+    """
+    Parse a YYYY-MM-DD string into a (day, month, year) tuple of ints.
+
+    Parameters
+    - date_str: String in the format produced by build_dateCode.
+
+    Returns
+    - Tuple (day_num, month_num, year).
+    """
     year = int(date_str[0:4])
     month_num = int(date_str[5:7])
     day_num = int(date_str[8:10])
@@ -46,7 +70,13 @@ def get_date(date_str: str) -> Tuple[int, int, int]:
 
 def get_aircrafts(aircraft_src: CSVSource) -> Iterator:
     """
-    Transforms raw aircraft data into the structure required for the Aircraft dimension.
+    Adapt raw aircraft CSV rows to the Aircrafts dimension schema.
+
+    Parameters
+    - aircraft_src: pygrametl CSVSource over the aircraft lookup.
+
+    Yields
+    - Dicts containing the natural key and attributes expected by the dimension.
     """
     for row in aircraft_src:
         yield {
@@ -59,8 +89,14 @@ def get_aircrafts(aircraft_src: CSVSource) -> Iterator:
 
 def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource) -> Iterator:
     """
-    Transforms raw reporter and maintenance personnel data into the structure required for the Reporters dimension.
-    Ensures uniqueness based on (Reporter_Class, Report_Airport_Code).
+    Merge and normalize reporter sources into the Reporters dimension schema.
+
+    Parameters
+    - reporter_src: SQLSource yielding (executionplace, reporteurclass).
+    - maintenance_personnel_src: CSVSource providing airports for MAREP records.
+
+    Yields
+    - Unique dicts keyed by (Reporter_Class, Report_Airport_Code).
     """
     reporters_seen: Set[tuple[str, str]] = set()
 
@@ -89,7 +125,15 @@ def generate_date_dimension_rows(
     maint_df: pd.DataFrame
 ) -> Iterator:
     """
-    Generates unique rows for the Date dimension using DataFrames.
+    Generate unique rows for the Dates dimension from multiple sources.
+
+    Parameters
+    - flights_df: DataFrame with scheduleddeparture.
+    - tech_logs_df: DataFrame with reportingdate.
+    - maint_df: DataFrame with scheduleddeparture.
+
+    Yields
+    - Dicts with Full_Date, Day_Num, Month_Num, Year.
     """
     # 1. Extract all dates
     flight_dates = flights_df['scheduleddeparture']
@@ -120,7 +164,15 @@ def generate_month_dimension_rows(
     maint_df: pd.DataFrame
 ) -> Iterator:
     """
-    Generates unique rows for the Month dimension using DataFrames.
+    Produce unique month-year combinations for the Months dimension.
+
+    Parameters
+    - flights_df: DataFrame with scheduleddeparture.
+    - tech_logs_df: DataFrame with reportingdate.
+    - maint_df: DataFrame with scheduleddeparture.
+
+    Yields
+    - Dicts with Month_Num and Year.
     """
     # 1. Extract all dates
     flight_dates = flights_df['scheduleddeparture']
@@ -142,9 +194,8 @@ def generate_month_dimension_rows(
     for row in tqdm(unique_months_df.to_dict('records'), desc="Generating Months"):
         yield row
 
-
 # =============================================================================
-# Fact Table Transformations 
+# Fact table transformations
 # =============================================================================
 
 def get_flights_operations_daily(   
@@ -153,7 +204,15 @@ def get_flights_operations_daily(
     aircrafts_dim: CachedDimension
 ) -> Iterator:
     """
-    Aggregates flight data by day and aircraft using pandas.
+    Aggregate flight data by day and aircraft using vectorized pandas.
+
+    Parameters
+    - flights_df: DataFrame of flights with actual/scheduled timestamps.
+    - dates_dim: CachedDimension for resolving Date_ID by Full_Date.
+    - aircrafts_dim: CachedDimension for resolving Aircraft_ID by registration.
+
+    Yields
+    - Fact rows with Date_ID, Aircraft_ID, FH, Takeoffs, DFC, CFC, TDM.
     """
     print("Vectorizing flight operations measures...")
     df = flights_df.copy()
@@ -219,7 +278,15 @@ def get_aircrafts_monthly_snapshot(
     aircrafts_dim: CachedDimension
 ) -> Iterator:
     """
-    Aggregates maintenance data monthly using pandas.
+    Aggregate maintenance windows by month and aircraft.
+
+    Parameters
+    - maintenance_df: DataFrame of maintenance intervals and flags.
+    - months_dim: CachedDimension for resolving Month_ID.
+    - aircrafts_dim: CachedDimension for resolving Aircraft_ID.
+
+    Yields
+    - Fact rows with Month_ID, Aircraft_ID, ADIS, ADOSS, ADOSU.
     """
     
     print("Vectorizing monthly maintenance measures...")
@@ -273,7 +340,16 @@ def get_logbooks(
     reporters_dim: CachedDimension
 ) -> Iterator:
     """
-    Aggregates technical logbook data using pandas.
+    Aggregate technical logbook entries by (year, month, aircraft, role, airport).
+
+    Parameters
+    - technical_logbooks_df: DataFrame with reportingdate, registration, role.
+    - months_dim: CachedDimension for Month_ID.
+    - aircrafts_dim: CachedDimension for Aircraft_ID.
+    - reporters_dim: CachedDimension for Reporter_ID.
+
+    Yields
+    - Fact rows with Month_ID, Aircraft_ID, Reporter_ID, Log_Count.
     """
 
     print("Vectorizing logbook measures...")
@@ -318,7 +394,13 @@ def get_logbooks(
 
 def check_and_fix_1st_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Applies BR1 (Swap) in a vectorized manner.
+    BR1: Swap arrival/departure when arrival precedes departure.
+
+    Parameters
+    - flights_df: Original flights DataFrame (will not be modified in-place).
+
+    Returns
+    - A copy with offending rows corrected by swapping the two timestamps.
     """
     print("Applying BR1 (Arrival/Departure Swap)...")
     df = flights_df.copy()
@@ -341,7 +423,13 @@ def check_and_fix_1st_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
 
 def check_and_fix_2nd_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Applies BR2 (Overlap) in a vectorized manner (much faster).
+    BR2: Remove overlapping flights for the same aircraft.
+
+    Parameters
+    - flights_df: Original flights DataFrame.
+
+    Returns
+    - A filtered DataFrame without flights that overlap the next departure.
     """
     print("Applying BR2 (Flight Overlap)...")
     
@@ -373,7 +461,14 @@ def check_and_fix_3rd_BR(
     aircrafts: CSVSource
 ) -> pd.DataFrame:
     """
-    Applies BR3 (Aircraft Existence) in a vectorized manner.
+    BR3: Identify post-flight reports referring to non-existent aircraft.
+
+    Parameters
+    - post_flights_reports_df: DataFrame of post-flight reports (AMOS).
+    - aircrafts: CSVSource for valid aircraft registration codes.
+
+    Returns
+    - DataFrame containing only the invalid reports (to be ignored upstream).
     """
     print("Applying BR3 (Aircraft Existence)...")
 
@@ -399,7 +494,14 @@ def get_valid_technical_logbooks(
     technical_logbooks_df: pd.DataFrame
 ) -> pd.DataFrame:
     """
-    Filter logbooks (vectorized).
+    Filter out technical logbooks that are referenced by invalid post-flight reports.
+
+    Parameters
+    - post_flights_reports_df: DataFrame with invalid tlborder identifiers.
+    - technical_logbooks_df: Technical logbooks DataFrame to filter.
+
+    Returns
+    - DataFrame of valid technical logbooks only.
     """
     print("Filtering Valid Technical Logbooks...")
 
