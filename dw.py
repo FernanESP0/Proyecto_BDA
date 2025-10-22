@@ -251,7 +251,7 @@ class DW:
                 -- Delay and cancellation ratios
                 100 * ROUND(y.total_DFC / NULLIF(y.total_Takeoffs, 0), 4) AS DYR,
                 100 * ROUND(y.total_CFC / NULLIF(y.total_Takeoffs, 0), 4) AS CNR,
-                100 - ROUND(100 * (y.total_DFC + y.total_CFC) / NULLIF(y.total_Takeoffs, 0), 2) AS TDR,
+                CEIL(100 - ROUND(100 * (y.total_DFC + y.total_CFC) / NULLIF(y.total_Takeoffs, 0), 2)) AS TDR,
                 100 * ROUND(y.total_TDM / NULLIF(y.total_DFC, 0), 2) AS ADD
             FROM yearly_data y
             JOIN maintenance_data m
