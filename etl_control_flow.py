@@ -33,9 +33,10 @@ warnings.filterwarnings(
 if __name__ == '__main__':
     dw = None
     try:
-    # =====================================================================
-    # 1. INITIALIZATION: Create DW and extract data into memory
-    # =====================================================================
+        # =====================================================================
+        # 1. INITIALIZATION: Create DW and extract data into memory
+        # =====================================================================
+        
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
         cleaning = False  # Set to True to enable BR-based data cleaning
@@ -57,6 +58,7 @@ if __name__ == '__main__':
         # =====================================================================
         # 2. DATA QUALITY CHECKS AND CLEANING (Pandas)
         # =====================================================================
+        
         if cleaning:
             print("\n--- [PHASE 2] Performing Data Quality Checks ---")
             try:
@@ -83,8 +85,9 @@ if __name__ == '__main__':
             print("\n--- [PHASE 2] Skipping Data Quality Checks ---")
 
         # =====================================================================
-    # 3. LOAD DIMENSION TABLES
+        # 3. LOAD DIMENSION TABLES
         # =====================================================================
+        
         print("\n--- [PHASE 3] Loading Dimension Tables ---")
 
         # Load Aircrafts Dimension
@@ -110,6 +113,7 @@ if __name__ == '__main__':
         # =====================================================================
         # 4. LOAD FACT TABLES
         # =====================================================================
+        
         if cleaning:
             print("\n--- [PHASE 4] Loading Fact Tables After Cleaning ---")
         else:
@@ -149,6 +153,7 @@ if __name__ == '__main__':
         # =====================================================================
         # 5. CLOSE: Ensure the DW connection is always closed
         # =====================================================================
+        
         if dw:
             dw.close()
             print("\nData Warehouse connection closed.")
