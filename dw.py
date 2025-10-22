@@ -85,7 +85,7 @@ class DW:
                     -- Fact tables
                     -- ===========================
 
-                    CREATE TABLE Flight_operations_Daily (
+                    CREATE TABLE Flight_Operations_Daily (
                         Date_ID     INT NOT NULL, 
                         Aircraft_ID INT NOT NULL,
                         FH          FLOAT NOT NULL,
@@ -189,28 +189,161 @@ class DW:
             keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
             measures=['Log_Count'],
         )
-        
+       
     # Example query methods for analysis
     def query_utilization(self):
-        """Placeholder: Example utilization query against the DW schema."""
+        """
+        Placeholder: Example utilization query against the DW schema.
+        """
         result = self.conn_duckdb.execute("""
-            SELECT ...
-            """).fetchall()
+            WITH yearly_data AS (
+                SELECT 
+                    a.Aircraft_Manufacturer_Class AS manufacturer,
+                    d.Year,
+                    SUM(f.FH) AS total_FH,
+                    SUM(f.Takeoffs) AS total_Takeoffs,
+                    SUM(f.TDM) AS total_TDM,        
+                    SUM(f.CFC) AS total_CFC,       
+                    SUM(f.DFC) AS total_DFC,       
+                    COUNT(DISTINCT a.Aircraft_ID) AS num_aircrafts
+                FROM Flight_Operations_Daily f
+                JOIN Aircrafts a ON f.Aircraft_ID = a.Aircraft_ID
+                JOIN Dates d ON f.Date_ID = d.Date_ID
+                GROUP BY a.Aircraft_Manufacturer_Class, d.Year
+            ),
+            maintenance_data AS (
+                SELECT 
+                    a.Aircraft_Manufacturer_Class AS manufacturer,
+                    m.Year,
+                    SUM(s.ADOSS) AS total_ADOSS,
+                    SUM(s.ADOSU) AS total_ADOSU,
+                    SUM(s.ADIS) AS total_ADIS,
+                    COUNT(DISTINCT a.Aircraft_ID) AS num_aircrafts
+                FROM Aircraft_Monthly_Summary s
+                JOIN Aircrafts a ON s.Aircraft_ID = a.Aircraft_ID
+                JOIN Months m ON s.Month_ID = m.Month_ID
+                GROUP BY a.Aircraft_Manufacturer_Class, m.Year
+            )
+            SELECT 
+                y.manufacturer,
+                y.year,
+                ROUND(y.total_FH / y.num_aircrafts, 2) AS FH,
+                ROUND(y.total_Takeoffs / y.num_aircrafts, 2) AS TakeOff,
+                
+                -- Maintenance metrics
+                ROUND(m.total_ADOSS / m.num_aircrafts, 2) AS ADOSS,
+                ROUND(m.total_ADOSU / m.num_aircrafts, 2) AS ADOSU,
+                ROUND((m.total_ADOSS + m.total_ADOSU) / m.num_aircrafts, 2) AS ADOS,
+                ROUND(m.total_ADIS / m.num_aircrafts, 2) AS ADIS,
+
+                -- Mean daily utilization
+                ROUND(
+                    ROUND(y.total_FH / y.num_aircrafts, 2) /
+                    ((365 - ROUND((m.total_ADOSS + m.total_ADOSU) / m.num_aircrafts, 2)) * 24),
+                    2
+                ) AS DU,
+                ROUND(
+                    ROUND(y.total_Takeoffs / y.num_aircrafts, 2) /
+                    (365 - ROUND((m.total_ADOSS + m.total_ADOSU) / m.num_aircrafts, 2)),
+                    2
+                ) AS DC,
+                
+                -- Delay and cancellation ratios
+                100 * ROUND(y.total_DFC / NULLIF(y.total_Takeoffs, 0), 4) AS DYR,
+                100 * ROUND(y.total_CFC / NULLIF(y.total_Takeoffs, 0), 4) AS CNR,
+                100 - ROUND(100 * (y.total_DFC + y.total_CFC) / NULLIF(y.total_Takeoffs, 0), 2) AS TDR,
+                100 * ROUND(y.total_TDM / NULLIF(y.total_DFC, 0), 2) AS ADD
+            FROM yearly_data y
+            JOIN maintenance_data m
+                ON y.manufacturer = m.manufacturer AND y.year = m.year
+            ORDER BY y.manufacturer, y.year;
+        """).fetchall()
         return result
+
 
     def query_reporting(self):
-        """Placeholder: Example reporting query against the DW schema."""
+        """
+        Placeholder: Example reporting query against the DW schema.
+        """
         result = self.conn_duckdb.execute("""
-            SELECT ...
-            """).fetchall()
+            WITH utilization AS (
+                SELECT
+                    a.Aircraft_Manufacturer_Class AS manufacturer,
+                    d.Year AS year,
+                    SUM(f.FH) AS total_FH,
+                    SUM(f.Takeoffs) AS total_Takeoffs
+                FROM Flight_Operations_Daily f
+                JOIN Aircrafts a ON f.Aircraft_ID = a.Aircraft_ID
+                JOIN Dates d ON f.Date_ID = d.Date_ID
+                GROUP BY a.Aircraft_Manufacturer_Class, d.Year
+            ),
+            reports AS (
+                SELECT
+                    a.Aircraft_Manufacturer_Class AS manufacturer,
+                    m.Year AS year,
+                    SUM(l.Log_Count) AS total_reports
+                FROM Logbooks l
+                JOIN Aircrafts a ON l.Aircraft_ID = a.Aircraft_ID
+                JOIN Months m ON l.Month_ID = m.Month_ID
+                GROUP BY a.Aircraft_Manufacturer_Class, m.Year
+            )
+            SELECT
+                u.manufacturer,
+                u.year,
+                1000 * ROUND(r.total_reports / NULLIF(u.total_FH, 0), 3) AS RRh,
+                100 * ROUND(r.total_reports / NULLIF(u.total_Takeoffs, 0), 2) AS RRc
+            FROM utilization u
+            JOIN reports r 
+                ON u.manufacturer = r.manufacturer AND u.year = r.year
+            ORDER BY u.manufacturer, u.year;
+        """).fetchall()
         return result
 
+
     def query_reporting_per_role(self):
-        """Placeholder: Example reporting per role query against the DW schema."""
+        """
+        Placeholder: Example reporting per role query against the DW schema.
+        """
         result = self.conn_duckdb.execute("""
-            SELECT ...
-            """).fetchall()
+            WITH data_utilization AS (
+                    SELECT 
+                        a.Aircraft_Manufacturer_Class AS manufacturer,
+                        d.Year AS year,
+                        SUM(f.FH) AS total_FH,
+                        SUM(f.Takeoffs) AS total_Takeoffs
+                    FROM Flight_Operations_Daily f
+                    JOIN Aircrafts a ON f.Aircraft_ID = a.Aircraft_ID
+                    JOIN Dates d ON f.Date_ID = d.Date_ID
+                    GROUP BY a.Aircraft_Manufacturer_Class, d.Year
+                ),
+                
+                data_reporting AS (
+                    SELECT 
+                        a.Aircraft_Manufacturer_Class AS manufacturer,
+                        m.Year AS year,
+                        r.Reporter_Class AS role,
+                        SUM(l.Log_Count) AS total_reports
+                    FROM Logbooks l
+                    JOIN Aircrafts a ON l.Aircraft_ID = a.Aircraft_ID
+                    JOIN Reporters r ON l.Reporter_ID = r.Reporter_ID
+                    JOIN Months m ON l.Month_ID = m.Month_ID
+                    GROUP BY a.Aircraft_Manufacturer_Class, m.Year, r.Reporter_Class
+                )
+            SELECT 
+                r.manufacturer, 
+                r.year, 
+                r.role,
+                -- RRh: Tasa de informes por 1000 horas de vuelo
+                1000 * ROUND(r.total_reports / NULLIF(u.total_FH, 0), 3) AS RRh,
+                -- RRc: Tasa de informes por 100 ciclos
+                100 * ROUND(r.total_reports / NULLIF(u.total_Takeoffs, 0), 2) AS RRc              
+            FROM data_reporting r
+            JOIN data_utilization u 
+                ON r.manufacturer = u.manufacturer AND r.year = u.year
+            ORDER BY r.manufacturer, r.year, r.role;
+        """).fetchall()
         return result
+
 
     def close(self):
         """

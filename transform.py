@@ -487,5 +487,5 @@ def check_and_fix_3rd_BR(
         for _, row in invalid_reports.iterrows():
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
 
-    # 4. Return only invalid rows
+    # 4. Return only valid rows
     return post_flights_reports_df[~invalid_mask]

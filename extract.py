@@ -98,7 +98,7 @@ def get_logbooks_info_df() -> pd.DataFrame:
     - pandas DataFrame with columns: workorderid, aircraftregistration,
       executionplace, reporteurclass, reportingdate (parsed as datetime).
     """
-    query = 'SELECT workorderid, aircraftregistration, executionplace, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders'
+    query = 'SELECT workorderid, aircraftregistration, executionplace, reporteurid, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders'
     return pd.read_sql(query, conn, parse_dates=['reportingdate'])
 
 
@@ -133,8 +133,8 @@ def get_postflightreports_df() -> pd.DataFrame:
     Returns
     - pandas DataFrame with columns pfrid, aircraftregistration, tlborder.
     """
-    query = 'SELECT pfrid, aircraftregistration, tlborder FROM "AMOS".postflightreports'
-    return pd.read_sql(query, conn)
+    query = 'SELECT pfrid, aircraftregistration, reportingdate, reporteurid, reporteurclass  FROM "AMOS".postflightreports'
+    return pd.read_sql(query, conn, parse_dates=['reportingdate'])
 
 # =======================================================================================================
 # Baseline queries

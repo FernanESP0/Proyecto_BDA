@@ -79,20 +79,18 @@ if __name__ == "__main__":
     dw = DW(create=False)
 
     print("\n═══════════════════════════ Query Aircraft Utilization ═══════════════════════════")
-    #print("================================ DW ======================================")
-    #time_and_print(dw.query_utilization, "utilization")
+    print("================================ DW ======================================")
+    time_and_print(dw.query_utilization, "utilization")
     print("============================= Baseline ===================================")
     time_and_print(extract.query_utilization_baseline, "utilization")
-
     print("\n════════════════════════════════ Query Reporting ══════════════════════════════════")
-    #print("================================ DW ======================================")
-    #time_and_print(dw.query_reporting, "reporting")
+    print("================================ DW ======================================")
+    time_and_print(dw.query_reporting, "reporting")
     print("============================= Baseline ===================================")
     time_and_print(extract.query_reporting_baseline, "reporting")
-
     print("\n══════════════════════════ Query Reporting per Role ═══════════════════════════════")
-    #print("================================ DW ======================================")
-    #time_and_print(dw.query_reporting_per_role, "reporting_per_role")
+    print("================================ DW ======================================")
+    time_and_print(dw.query_reporting_per_role, "reporting_per_role")
     print("============================= Baseline ===================================")
     time_and_print(extract.query_reporting_per_role_baseline, "reporting_per_role")
 

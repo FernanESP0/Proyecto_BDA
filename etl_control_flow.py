@@ -39,7 +39,7 @@ if __name__ == '__main__':
         
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
-        cleaning = True  # Set to True to enable BR-based data cleaning
+        cleaning = False  # Set to True to enable BR-based data cleaning
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
         # Load Logbooks Fact Table
         logbooks_iterator = transform.get_logbooks(
-            logbooks_df,  # Can be cleaned or uncleaned depending on cleaning flag
+            logbooks_df,  
             dw.months_dim,
             dw.aircrafts_dim,
             dw.reporters_dim
