@@ -461,7 +461,7 @@ def check_and_fix_2nd_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
 def check_and_fix_3rd_BR(
     post_flights_reports_df: pd.DataFrame, 
     aircrafts: CSVSource
-) -> pd.DataFrame:
+):
     """
     BR3: Identify post-flight reports referring to non-existent aircraft.
 
@@ -486,39 +486,6 @@ def check_and_fix_3rd_BR(
         print(f"BR3 Violation: Found {len(invalid_reports)} reports with non-existent aircraft. Ignoring...")
         for _, row in invalid_reports.iterrows():
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
-            
+
     # 4. Return only invalid rows
-    return post_flights_reports_df[invalid_mask]
-
-
-def get_valid_technical_logbooks(
-    post_flights_reports_df: pd.DataFrame,
-    technical_logbooks_df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Filter out technical logbooks that are referenced by invalid post-flight reports.
-
-    Parameters
-    - post_flights_reports_df: DataFrame with invalid tlborder identifiers.
-    - technical_logbooks_df: Technical logbooks DataFrame to filter.
-
-    Returns
-    - DataFrame of valid technical logbooks only.
-    """
-    print("Filtering Valid Technical Logbooks...")
-
-    # 1. IDs to exclude
-    not_valid_aircraft_worker_ids = set(post_flights_reports_df['tlborder'].dropna())
-    
-    # 2. Find invalid rows
-    invalid_mask = technical_logbooks_df['workorderid'].isin(not_valid_aircraft_worker_ids)
-
-    # 3. Log violations
-    invalid_logbooks = technical_logbooks_df[invalid_mask]
-    if not invalid_logbooks.empty:
-        print(f"Invalid Technical Logbooks: Found {len(invalid_logbooks)} entries to ignore.")
-        for _, row in invalid_logbooks.iterrows():
-             logging.warning(f"Invalid Technical Logbook: Entry {row['workorderid']} found in invalid reports. Ignoring.")
-
-    # 4. Return only valid rows
-    return technical_logbooks_df[~invalid_mask]
+    return post_flights_reports_df[~invalid_mask]

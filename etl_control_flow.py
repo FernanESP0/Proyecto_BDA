@@ -39,7 +39,7 @@ if __name__ == '__main__':
         
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
-        cleaning = False  # Set to True to enable BR-based data cleaning
+        cleaning = True  # Set to True to enable BR-based data cleaning
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
@@ -66,15 +66,8 @@ if __name__ == '__main__':
                 print("Applying Data Quality Checks and Cleaning...")
                 flights_df = transform.check_and_fix_1st_BR(flights_df)
                 flights_df = transform.check_and_fix_2nd_BR(flights_df)
-                postflightreports_df = transform.check_and_fix_3rd_BR(
-                    postflightreports_df, 
-                    aircraft_manuf_info_cp
-                )
-                logbooks_df = transform.get_valid_technical_logbooks(
-                    postflightreports_df, 
-                    logbooks_df
-                )
-            
+                postflightreports_df = transform.check_and_fix_3rd_BR(postflightreports_df, aircraft_manuf_info_cp)
+
             except Exception as e:
                 print(f"Error during data cleaning: {e}. Check 'cleaning.log'.")
                 raise  # Stop ETL if cleaning fails
