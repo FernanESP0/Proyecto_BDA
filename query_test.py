@@ -13,7 +13,8 @@ Usage
 
 import time
 from decimal import Decimal
-from tabulate import tabulate # type:ignore
+# pip3 install tabulate (if the library is not already installed)
+from tabulate import tabulate # type:ignore  
 from dw import DW
 import extract as extract
 
