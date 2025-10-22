@@ -333,9 +333,7 @@ class DW:
                 r.manufacturer, 
                 r.year, 
                 r.role,
-                -- RRh: Tasa de informes por 1000 horas de vuelo
                 1000 * ROUND(r.total_reports / NULLIF(u.total_FH, 0), 3) AS RRh,
-                -- RRc: Tasa de informes por 100 ciclos
                 100 * ROUND(r.total_reports / NULLIF(u.total_Takeoffs, 0), 2) AS RRc              
             FROM data_reporting r
             JOIN data_utilization u 
