@@ -48,27 +48,11 @@ def build_dateCode(date: datetime) -> str:
     """
     return f"{date.year}-{date.month:02d}-{date.day:02d}"
 
-
-def get_date(date_str: str) -> Tuple[int, int, int]:
-    """
-    Parse a YYYY-MM-DD string into a (day, month, year) tuple of ints.
-
-    Parameters
-    - date_str: String in the format produced by build_dateCode.
-
-    Returns
-    - Tuple (day_num, month_num, year).
-    """
-    year = int(date_str[0:4])
-    month_num = int(date_str[5:7])
-    day_num = int(date_str[8:10])
-    return (day_num, month_num, year)
-
 # =============================================================================
 # Dimension Table Transformations
 # =============================================================================
 
-def get_aircrafts(aircraft_src: CSVSource) -> Iterator:
+def get_aircrafts(aircraft_src: CSVSource, postflighreports_df: pd.DataFrame) -> Iterator:
     """
     Adapt raw aircraft CSV rows to the Aircrafts dimension schema.
 
@@ -78,109 +62,83 @@ def get_aircrafts(aircraft_src: CSVSource) -> Iterator:
     Yields
     - Dicts containing the natural key and attributes expected by the dimension.
     """
+    seen = set()
+
+    # Process the aircrafts from the main CSV
     for row in aircraft_src:
-        yield {
-            'Aircraft_Registration_Code': row['aircraft_reg_code'],
-            'Manufacturer_Serial_Number': row['manufacturer_serial_number'],
-            'Aircraft_Model': row['aircraft_model'],
-            'Aircraft_Manufacturer_Class': row['aircraft_manufacturer']
-        }
-
-
-def get_reporters(reporter_src: SQLSource, maintenance_personnel_src: CSVSource) -> Iterator:
-    """
-    Merge and normalize reporter sources into the Reporters dimension schema.
-
-    Parameters
-    - reporter_src: SQLSource yielding (executionplace, reporteurclass).
-    - maintenance_personnel_src: CSVSource providing airports for MAREP records.
-
-    Yields
-    - Unique dicts keyed by (Reporter_Class, Report_Airport_Code).
-    """
-    reporters_seen: Set[tuple[str, str]] = set()
-
-    # Process maintenance personnel (MAREP)
-    for row in maintenance_personnel_src:
-        if ('MAREP', row['airport']) not in reporters_seen:
-            reporters_seen.add(('MAREP', row['airport']))
+        reg_code = row['aircraft_reg_code']
+        if reg_code not in seen:
+            seen.add(reg_code)
             yield {
-                'Reporter_Class': 'MAREP',
-                'Report_Airport_Code': row['airport'],
+                'Aircraft_Registration_Code': reg_code,
+                'Manufacturer_Serial_Number': row.get('manufacturer_serial_number'),
+                'Aircraft_Model': row.get('aircraft_model'),
+                'Aircraft_Manufacturer_Class': row.get('aircraft_manufacturer')
             }
 
-    # Process the remaining reporters (PIREP or MAREP) for a given airport
-    for row in reporter_src:
-        if (row['reporteurclass'], row['executionplace']) not in reporters_seen:
-            reporters_seen.add((row['reporteurclass'], row['executionplace']))
+    # Also include any aircraft registrations seen in postflightreports that are not in the main CSV
+    for reg_code in postflighreports_df['aircraftregistration'].dropna().unique():
+        if reg_code not in seen:
+            seen.add(reg_code)
             yield {
-                'Reporter_Class': row['reporteurclass'],
-                'Report_Airport_Code': row['executionplace'],
+                'Aircraft_Registration_Code': reg_code,
+                'Manufacturer_Serial_Number': None,
+                'Aircraft_Model': None,
+                'Aircraft_Manufacturer_Class': None
             }
 
 
 def generate_date_dimension_rows(
     flights_df: pd.DataFrame, 
-    tech_logs_df: pd.DataFrame, 
-    maint_df: pd.DataFrame
 ) -> Iterator:
     """
     Generate unique rows for the Dates dimension from multiple sources.
 
     Parameters
     - flights_df: DataFrame with scheduleddeparture.
-    - tech_logs_df: DataFrame with reportingdate.
-    - maint_df: DataFrame with scheduleddeparture.
 
     Yields
     - Dicts with Full_Date, Day_Num, Month_Num, Year.
     """
     # 1. Extract all dates
     flight_dates = flights_df['scheduleddeparture']
-    tech_log_dates = tech_logs_df['reportingdate']
-    maint_dates = maint_df['scheduleddeparture']
 
     # 2. Concatenate, drop nulls, and duplicates
-    all_dates = pd.concat([flight_dates, tech_log_dates, maint_dates], ignore_index=True)
-    unique_dates = all_dates.dt.normalize().unique()
-    
+    unique_dates = flight_dates.dt.normalize().unique()
+
     dates_df = pd.DataFrame(unique_dates, columns=['date_obj'])
 
     print("Generating unique Date dimension rows...")
     for date_obj in tqdm(dates_df['date_obj']):
         date_str = build_dateCode(date_obj) 
-        day_num, month_num, year = get_date(date_str)
         yield {
             'Full_Date': date_str,
-            'Day_Num': day_num,
-            'Month_Num': month_num,
-            'Year': year,
+            'Day_Num': date_obj.day,
+            'Month_Num': date_obj.month,
+            'Year': date_obj.year,
         }
 
 
 def generate_month_dimension_rows(
-    flights_df: pd.DataFrame, 
-    tech_logs_df: pd.DataFrame, 
+    postflighreports_df: pd.DataFrame, 
     maint_df: pd.DataFrame
 ) -> Iterator:
     """
     Produce unique month-year combinations for the Months dimension.
 
     Parameters
-    - flights_df: DataFrame with scheduleddeparture.
-    - tech_logs_df: DataFrame with reportingdate.
+    - postflighreports_df: DataFrame with reportingdate.
     - maint_df: DataFrame with scheduleddeparture.
 
     Yields
     - Dicts with Month_Num and Year.
     """
     # 1. Extract all dates
-    flight_dates = flights_df['scheduleddeparture']
-    tech_log_dates = tech_logs_df['reportingdate']
+    log_dates = postflighreports_df['reportingdate']
     maint_dates = maint_df['scheduleddeparture']
 
     # 2. Concatenate and get unique months/years
-    all_dates = pd.concat([flight_dates, tech_log_dates, maint_dates], ignore_index=True)
+    all_dates = pd.concat([log_dates, maint_dates], ignore_index=True)
 
     # Create a temporary DataFrame for 'drop_duplicates'
     months_df = pd.DataFrame({
@@ -336,13 +294,13 @@ def get_aircrafts_monthly_snapshot(
 
 
 def get_logbooks(
-    technical_logbooks_df: pd.DataFrame,
+    post_flightreports_df: pd.DataFrame,
+    maint_src: pd.DataFrame,
     months_dim: CachedDimension, 
     aircrafts_dim: CachedDimension, 
-    reporters_dim: CachedDimension
 ) -> Iterator:
     """
-    Aggregate technical logbook entries by (year, month, aircraft, role, airport).
+    Aggregate logbook entries by (year, month, aircraft, role, airport).
 
     Parameters
     - technical_logbooks_df: DataFrame with reportingdate, registration, role.
@@ -351,39 +309,38 @@ def get_logbooks(
     - reporters_dim: CachedDimension for Reporter_ID.
 
     Yields
-    - Fact rows with Month_ID, Aircraft_ID, Reporter_ID, Log_Count.
+    - Fact rows with Month_ID, Aircraft_ID, Log_Count, Airport.
     """
-
-    print("Vectorizing logbook measures...")
-    df = technical_logbooks_df.dropna(
-        subset=['reportingdate', 'aircraftregistration', 'reporteurclass', 'executionplace']
-    ).copy()
+    # Convert both key columns to string (object) type
+    post_flightreports_df['reporteurid'] = post_flightreports_df['reporteurid'].astype(str)
+    maint_src['reporteurid'] = maint_src['reporteurid'].astype(str)
     
-    # 1. Pre-processing
-    df['year'] = df['reportingdate'].dt.year
-    df['month_num'] = df['reportingdate'].dt.month
+    merged_df = post_flightreports_df.merge(
+        maint_src[['reporteurid', 'airport']],
+        on=['reporteurid'],
+        how='left'
+    )
+    merged_df['airport'] = merged_df['airport'].fillna('NONE')
+    merged_df['year'], merged_df['month_num'] = merged_df['reportingdate'].dt.year, merged_df['reportingdate'].dt.month
 
-    # 2. Aggregation (Group By)
     print("Aggregating logbook entries (pandas)...")
     agg_df = (
-        df.groupby(['year', 'month_num', 'aircraftregistration', 'reporteurclass', 'executionplace'])
+        merged_df.groupby(['year', 'month_num', 'airport', 'aircraftregistration']) 
         .size()
         .reset_index()
         .rename(columns={0: 'Log_Count'})
     )
-
-    # 3. Lookup keys and Yield
+    
     print("Yielding final logbook facts...")
     for row in tqdm(agg_df.to_dict('records'), desc="Finalizing Logbooks"):
         try:
             month_id = months_dim.lookup({'Month_Num': row['month_num'], 'Year': row['year']})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            reporter_id = reporters_dim.lookup({'Reporter_Class': row['reporteurclass'], 'Report_Airport_Code': row['executionplace']})
-
+            
             yield {
                 'Month_ID': month_id,
                 'Aircraft_ID': aircraft_id,
-                'Reporter_ID': reporter_id,
+                'Airport': row['airport'],
                 'Log_Count': row['Log_Count']
             }
         except KeyError as e:
@@ -487,5 +444,4 @@ def check_and_fix_3rd_BR(
         for _, row in invalid_reports.iterrows():
             logging.warning(f"BR3 Violation: Aircraft {row['aircraftregistration']} not found. Ignoring report {row['pfrid']}.")
 
-    # 4. Return only valid rows
     return post_flights_reports_df[~invalid_mask]

@@ -48,10 +48,8 @@ if __name__ == '__main__':
         print("CSV sources extracted.")
 
         print("Extracting data from PostgreSQL sources...")
-        reporters_src = extract.get_reporters_info()
         flights_df = extract.get_flights_df()
         maintenance_df = extract.get_maintenance_info_df()
-        logbooks_df = extract.get_logbooks_info_df()
         postflightreports_df = extract.get_postflightreports_df()
         print("PostgreSQL sources extracted.")
 
@@ -84,23 +82,15 @@ if __name__ == '__main__':
         print("\n--- [PHASE 3] Loading Dimension Tables ---")
 
         # Load Aircrafts Dimension
-        aircraft_iterator = transform.get_aircrafts(aircraft_manuf_info)
+        aircraft_iterator = transform.get_aircrafts(aircraft_manuf_info, postflightreports_df)
         load.load_aircrafts(dw, aircraft_iterator)
 
-        # Load Reporters Dimension 
-        reporter_iterator = transform.get_reporters(reporters_src, maint_personnel_info)
-        load.load_reporters(dw, reporter_iterator)
-
         # Load Dates Dimension 
-        date_iterator = transform.generate_date_dimension_rows(
-            flights_df, logbooks_df, maintenance_df
-        )
+        date_iterator = transform.generate_date_dimension_rows(flights_df)
         load.load_dates(dw, date_iterator)
 
         # Load Months Dimension
-        month_iterator = transform.generate_month_dimension_rows(
-            flights_df, logbooks_df, maintenance_df
-        )
+        month_iterator = transform.generate_month_dimension_rows(postflightreports_df, maintenance_df)
         load.load_months(dw, month_iterator)
 
         # =====================================================================
@@ -129,11 +119,11 @@ if __name__ == '__main__':
         load.load_aircrafts_monthly_snapshot(dw, ams_iterator)
 
         # Load Logbooks Fact Table
-        logbooks_iterator = transform.get_logbooks(
-            logbooks_df,  
+        logbooks_iterator = transform.get_logbooks( 
+            postflightreports_df,
+            maint_personnel_info,
             dw.months_dim,
             dw.aircrafts_dim,
-            dw.reporters_dim
         )
         load.load_logbooks(dw, logbooks_iterator)
 

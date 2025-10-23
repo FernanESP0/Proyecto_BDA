@@ -62,45 +62,18 @@ def get_aircraft_manufacturer_info() -> CSVSource:
     )
 
 
-def get_maintenance_personnel() -> CSVSource:
+def get_maintenance_personnel() -> pd.DataFrame:
     """
-    Open the maintenance personnel CSV as a pygrametl CSVSource.
+    Open the maintenance personnel CSV as a pandas DataFrame.
 
     Returns
-    - CSVSource iterable with personnel attributes required by the reporters
-      dimension builder.
+    - DataFrame with personnel attributes required by the reporters
     """
-    return CSVSource(
-        open('maintenance_personnel.csv', 'r', encoding='utf-8'),
-        delimiter=','
-    )
+    return pd.read_csv('maintenance_personnel.csv', dtype=str)
 
 # ============================================================
 # PostgreSQL extraction helpers
 # ============================================================
-
-def get_reporters_info() -> SQLSource:
-    """
-    Retrieve unique (executionplace, reporteurclass) combinations from AMOS.
-
-    Returns
-    - SQLSource yielding distinct pairs used to build the Reporters dimension.
-    """
-    query = 'SELECT DISTINCT executionplace, reporteurclass FROM "AMOS".technicallogbookorders'
-    return SQLSource(conn, query)
-
-
-def get_logbooks_info_df() -> pd.DataFrame:
-    """
-    Extract technical logbook order attributes required by the pipeline.
-
-    Returns
-    - pandas DataFrame with columns: workorderid, aircraftregistration,
-      executionplace, reporteurclass, reportingdate (parsed as datetime).
-    """
-    query = 'SELECT workorderid, aircraftregistration, executionplace, reporteurid, reporteurclass, reportingdate FROM "AMOS".technicallogbookorders'
-    return pd.read_sql(query, conn, parse_dates=['reportingdate'])
-
 
 def get_flights_df() -> pd.DataFrame:
     """
@@ -133,7 +106,7 @@ def get_postflightreports_df() -> pd.DataFrame:
     Returns
     - pandas DataFrame with columns pfrid, aircraftregistration, tlborder.
     """
-    query = 'SELECT pfrid, aircraftregistration, reportingdate, reporteurid, reporteurclass  FROM "AMOS".postflightreports'
+    query = 'SELECT pfrid, aircraftregistration, reportingdate, reporteurid, reporteurclass FROM "AMOS".postflightreports'
     return pd.read_sql(query, conn, parse_dates=['reportingdate'])
 
 # =======================================================================================================

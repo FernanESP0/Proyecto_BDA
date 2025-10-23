@@ -51,9 +51,9 @@ class DW:
                     CREATE TABLE Aircrafts (
                         Aircraft_ID                   INT PRIMARY KEY, -- surrogate key
                         Aircraft_Registration_Code    VARCHAR(10) NOT NULL UNIQUE,
-                        Manufacturer_Serial_Number    VARCHAR(20) NOT NULL,
-                        Aircraft_Model                VARCHAR(50) NOT NULL,
-                        Aircraft_Manufacturer_Class   Aircraft_Manufacturer NOT NULL
+                        Manufacturer_Serial_Number    VARCHAR(20),
+                        Aircraft_Model                VARCHAR(50),
+                        Aircraft_Manufacturer_Class   Aircraft_Manufacturer
                     );
 
                     CREATE TABLE Dates (
@@ -70,15 +70,6 @@ class DW:
                         Month_Num  INT NOT NULL CHECK (Month_Num BETWEEN 1 AND 12),
                         Year       INT NOT NULL,
                         UNIQUE (Year, Month_Num)
-                    );
-                    
-                    CREATE TYPE ReportKind AS ENUM ('PIREP', 'MAREP'); 
-
-                    CREATE TABLE Reporters (
-                        Reporter_ID           INT PRIMARY KEY, -- surrogate key
-                        Reporter_Class        ReportKind NOT NULL,
-                        Report_Airport_Code   CHAR(3),
-                        UNIQUE (Reporter_Class, Report_Airport_Code)
                     );
 
                     -- ===========================
@@ -112,12 +103,11 @@ class DW:
                     CREATE TABLE Logbooks (
                         Month_ID    INT NOT NULL,
                         Aircraft_ID INT NOT NULL,
-                        Reporter_ID INT NOT NULL,
+                        Airport     VARCHAR(10),
                         Log_Count   INT NOT NULL CHECK (Log_Count > 0),
-                        PRIMARY KEY (Month_ID, Aircraft_ID, Reporter_ID),
+                        PRIMARY KEY (Month_ID, Aircraft_ID, Airport),
                         FOREIGN KEY (Month_ID) REFERENCES Months(Month_ID),
-                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID),
-                        FOREIGN KEY (Reporter_ID) REFERENCES Reporters(Reporter_ID)
+                        FOREIGN KEY (Aircraft_ID) REFERENCES Aircrafts(Aircraft_ID)
                     );
                 ''')
                 print("DW tables created successfully")
@@ -159,13 +149,6 @@ class DW:
             attributes=['Month_Num', 'Year'],
             lookupatts=['Month_Num', 'Year'],
         )
-        
-        self.reporters_dim = CachedDimension(
-            name='Reporters',
-            key='Reporter_ID',
-            attributes=['Reporter_Class', 'Report_Airport_Code'],
-            lookupatts=['Reporter_Class', 'Report_Airport_Code'], 
-        )
 
         # =====================================================================
         # Fact Tables
@@ -187,7 +170,7 @@ class DW:
         self.logbook_fact = FactTable(
             name='Logbooks',
             keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
-            measures=['Log_Count'],
+            measures=['Log_Count', 'Airport'],
         )
        
     # Example query methods for analysis
@@ -321,13 +304,21 @@ class DW:
                     SELECT 
                         a.Aircraft_Manufacturer_Class AS manufacturer,
                         m.Year AS year,
-                        r.Reporter_Class AS role,
+                        CASE 
+                            WHEN l.Airport != 'NONE' THEN 'MAREP' 
+                            ELSE 'PIREP' 
+                        END AS role,
                         SUM(l.Log_Count) AS total_reports
                     FROM Logbooks l
                     JOIN Aircrafts a ON l.Aircraft_ID = a.Aircraft_ID
-                    JOIN Reporters r ON l.Reporter_ID = r.Reporter_ID
                     JOIN Months m ON l.Month_ID = m.Month_ID
-                    GROUP BY a.Aircraft_Manufacturer_Class, m.Year, r.Reporter_Class
+                    GROUP BY 
+                        a.Aircraft_Manufacturer_Class, 
+                        m.Year, 
+                        CASE  
+                            WHEN l.Airport != 'NONE' THEN 'MAREP' 
+                            ELSE 'PIREP' 
+                        END
                 )
             SELECT 
                 r.manufacturer, 

@@ -45,19 +45,6 @@ def load_aircrafts(dw: Any, aircraft_iterator: Iterator) -> None:
         dw.aircrafts_dim.ensure(row)
 
 
-def load_reporters(dw: Any, reporter_iterator: Iterator) -> None:
-    """
-    Load reporter rows into the Reporters dimension using pygrametl's cache.
-
-    Parameters
-    - dw: Data warehouse handle exposing "reporters_dim" (CachedDimension).
-    - reporter_iterator: Iterator yielding dicts with reporter attributes.
-    """
-    print("Loading dimension: Reporter (pygrametl cache)...")
-    for row in tqdm(reporter_iterator, desc="Dim: Reporter"):
-        dw.reporters_dim.ensure(row)
-
-
 def load_dates(dw: Any, date_iterator: Iterator) -> None:
     """
     Load date rows into the Dates dimension using pygrametl's cache.
