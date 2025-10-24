@@ -39,7 +39,15 @@ if __name__ == '__main__':
         
         print("--- [PHASE 1] Initializing DW and Extracting ---")
         dw = DW(create=True)
-        cleaning = False  # Set to True to enable BR-based data cleaning
+        
+        # --- User Prompt for Data Cleaning ---
+        user_response = input("Do you want to apply cleaning of data? (yes/no): ")
+        cleaning = user_response.lower().strip().startswith('y')
+
+        if cleaning:
+            print("User selected: YES. Data cleaning will be applied.")
+        else:
+            print("User selected: NO. Skipping data cleaning.")
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()

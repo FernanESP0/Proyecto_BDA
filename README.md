@@ -1,23 +1,20 @@
-# Proyecto_BDA
+# Proyecto_BDA — ETL / Data Warehouse Quickstart
 
-Breve README para el proyecto ETL / Data Warehouse contenido en este repositorio.
+This repository contains a small ETL pipeline that extracts flight and logbook
+data from operational sources, applies transformations and business-rule based
+cleaning, and loads results into a DuckDB-backed data warehouse for analysis.
 
-## Propósito
-Repositorio de ejemplo que implementa extracción, transformación y carga (ETL) de datos
-de vuelos y logbooks hacia un Data Warehouse (DuckDB). Incluye utilidades para ejecutar
-consultas analíticas de ejemplo.
+Core components
+- `extract.py` — source data access (PostgreSQL queries and CSV readers).
+- `transform.py` — pandas-based transformations, aggregations and cleaning.
+- `load.py` — dimension upserts (pygrametl) and bulk fact loads (DuckDB).
+- `dw.py` — DW schema DDL and pygrametl object definitions (CachedDimension, FactTable).
+- `etl_control_flow.py` — orchestrates extract → transform → load.
+- `query_test.py` — run example DW and baseline queries and pretty-print results.
+- `requirements.txt` — inferred third-party dependencies.
 
-## Estructura principal
-- `extract.py` — funciones para extraer datos desde PostgreSQL y CSVs.
-- `transform.py` — transformaciones, limpieza y agregaciones con pandas.
-- `load.py` — carga de dimensiones y hechos en el DW usando `pygrametl`.
-- `dw.py` — definición de esquema DW y objetos `pygrametl` (CachedDimension, FactTable).
-- `etl_control_flow.py` — orquestador que coordina extracción → transformación → carga.
-- `query_test.py` — script para ejecutar consultas de ejemplo y mostrar resultados.
-- `requirements.txt` — dependencias de terceros inferidas del código.
-
-## Requisitos y setup (Windows PowerShell)
-Recomiendo usar un entorno virtual para instalar dependencias:
+Quick setup (Windows PowerShell)
+It is recommended to use a virtual environment:
 
 ```powershell
 python -m venv .venv
@@ -26,36 +23,51 @@ pip install --upgrade pip
 pip install -r .\requirements.txt
 ```
 
-Si quieres versiones exactas y reproducibles:
+For reproducible, pinned dependencies after you validate versions:
 
 ```powershell
 pip freeze > requirements-frozen.txt
 ```
 
-## Configuración de la conexión a PostgreSQL
-El archivo `extract.py` espera un fichero `db_conf.txt` en la raíz con líneas en formato
-`key=value` con estas claves: `dbname`, `user`, `password`, `ip`, `port`.
+Database configuration
+The ETL scripts read a simple `db_conf.txt` in the repository root with
+one `key=value` per line. Required keys:
 
-## Ejecución rápida
-- Extraer/transformar/cargar (orquestador):
+- `dbname`
+- `user`
+- `password`
+- `ip` (or `host`)
+- `port`
+
+Example `db_conf.txt`:
+
+```
+dbname=your_db
+user=your_user
+password=your_pass
+ip=127.0.0.1
+port=5432
+```
+
+Run the ETL
+- Orchestrator (extract → transform → load):
 
 ```powershell
 python etl_control_flow.py
 ```
 
-- Ejecutar consultas de ejemplo (usa la extracción baseline que accede a la BD):
+- Run the example queries and pretty-print results:
 
 ```powershell
 python query_test.py
 ```
 
-## Notas sobre tipos y editores
-- El proyecto usa `# type: ignore` en algunos imports (por ejemplo `tabulate`) para evitar
-  errores de type checkers cuando no hay stubs disponibles.
-- Si usas mypy/pyright y quieres mayor precisión, instala paquetes de tipos o crea un
-  `pyrightconfig.json`/`mypy.ini` para ajustar la verificación.
+Notes on types and editors
+- Some imports use `# type: ignore` (e.g. `tabulate`) when no type stubs are
+  available. If you use mypy or pyright and want stricter checks, add stubs or
+  configure your type checker.
 
-## Siguientes pasos sugeridos
-- Confirmar versiones de `pygrametl` y `duckdb` en el entorno de producción.
-- Añadir tests unitarios (pytest) para las transformaciones.
-- (Opcional) Crear `requirements-dev.txt` con herramientas de desarrollo (black, isort, mypy).
+Suggested next steps
+- Pin exact, tested package versions for CI (`requirements-frozen.txt`).
+- Add unit tests (pytest) for key transform functions.
+- Add a `requirements-dev.txt` with developer tooling (black, isort, mypy).

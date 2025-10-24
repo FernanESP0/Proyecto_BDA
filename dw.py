@@ -1,13 +1,12 @@
-"""
-Data Warehouse (DW) interface and schema definition
+"""Data Warehouse (DW) interface and schema definition.
 
-Exposes a single DW class that encapsulates:
-- DuckDB database connection and schema DDL (dimensions and facts)
-- pygrametl integration (ConnectionWrapper, CachedDimensions, FactTables)
+This module exposes a simple DW facade class that encapsulates:
+- a native DuckDB connection used for DDL/DML and bulk DataFrame inserts,
+- a pygrametl ConnectionWrapper for dimension/fact convenience APIs,
+- CachedDimension and FactTable objects that describe the logical schema.
 
-The class aims to provide a simple surface for the ETL layers: callers can
-instantiate DW(create=True) to reset and create the schema, or DW() to reuse
-an existing database file.
+Callers can instantiate ``DW(create=True)`` to remove any existing DuckDB
+file and create the schema, or ``DW()`` to reuse an existing database file.
 """
 
 import os
@@ -21,21 +20,23 @@ duckdb_filename = 'dw.duckdb'
 
 
 class DW:
-    """
-    Data Warehouse facade wrapping DuckDB and pygrametl constructs.
+    """A lightweight Data Warehouse facade.
 
     Parameters
-    - create: When True, removes any existing DuckDB file and recreates schema.
+    - create (bool): When True, removes any existing DuckDB file and recreates
+      the schema defined in this module.
 
-    Attributes
+    Attributes (selected)
     - conn_duckdb: Native DuckDB connection used for DDL/DML and bulk inserts.
-    - conn_pygrametl: pygrametl ConnectionWrapper bound to conn_duckdb.
-    - <*_dim>: CachedDimension instances for all dimension tables.
-    - <*_fact>: FactTable instances for all fact tables.
+    - conn_pygrametl: pygrametl.ConnectionWrapper bound to conn_duckdb.
+    - aircrafts_dim, dates_dim, months_dim: CachedDimension objects.
+    - flight_fact, aircraft_monthly_fact, logbook_fact: FactTable objects.
     """
+
     def __init__(self, create=False):
         if create and os.path.exists(duckdb_filename):
             os.remove(duckdb_filename)
+
         try:
             self.conn_duckdb = duckdb.connect(duckdb_filename)
             print("Connection to the DW created successfully")
@@ -115,31 +116,29 @@ class DW:
                 print("Error creating the DW tables:", e)
                 sys.exit(2)
 
-    # Link DuckDB and pygrametl
+        # Link DuckDB and pygrametl
         self.conn_pygrametl = pygrametl.ConnectionWrapper(self.conn_duckdb)
 
         # =======================================================================================================
         # Dimensions
         # =======================================================================================================
 
-        self.aircrafts_dim = CachedDimension( 
+        self.aircrafts_dim = CachedDimension(
             name='Aircrafts',
             key='Aircraft_ID',
             attributes=[
                 'Aircraft_Registration_Code',
                 'Manufacturer_Serial_Number',
                 'Aircraft_Model',
-                'Aircraft_Manufacturer_Class'
+                'Aircraft_Manufacturer_Class',
             ],
-            lookupatts=['Aircraft_Registration_Code'], 
+            lookupatts=['Aircraft_Registration_Code'],
         )
 
         self.dates_dim = CachedDimension(
             name='Dates',
             key='Date_ID',
-            attributes=[
-                'Full_Date', 'Day_Num', 'Month_Num', 'Year'
-            ],
+            attributes=['Full_Date', 'Day_Num', 'Month_Num', 'Year'],
             lookupatts=['Full_Date'],
         )
 
@@ -153,26 +152,31 @@ class DW:
         # =====================================================================
         # Fact Tables
         # =====================================================================
-        
-        # FactTables also rely on the pygrametl connection wrapper
+        # Note: names and keys here reflect the DW DDL created above. The
+        # pygrametl FactTable objects are primarily used to document the
+        # expected keyrefs/measures; the code uses DuckDB bulk inserts for
+        # actual fact loading.
+
         self.flight_fact = FactTable(
-            name='Flight_operations_Daily',
+            name='Flight_Operations_Daily',
             keyrefs=['Date_ID', 'Aircraft_ID'],
-            measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM'], 
+            measures=['FH', 'Takeoffs', 'DFC', 'CFC', 'TDM'],
         )
 
         self.aircraft_monthly_fact = FactTable(
             name='Aircraft_Monthly_Summary',
             keyrefs=['Month_ID', 'Aircraft_ID'],
-            measures=['ADIS', 'ADOSS', 'ADOSU'], 
+            measures=['ADIS', 'ADOSS', 'ADOSU'],
         )
 
+        # The Logbooks fact table uses (Month_ID, Aircraft_ID, Airport) as its
+        # primary key in the DW DDL; the single numeric measure is Log_Count.
         self.logbook_fact = FactTable(
             name='Logbooks',
-            keyrefs=['Month_ID', 'Aircraft_ID', 'Reporter_ID'],
-            measures=['Log_Count', 'Airport'],
+            keyrefs=['Month_ID', 'Aircraft_ID', 'Airport'],
+            measures=['Log_Count'],
         )
-       
+
     # Example query methods for analysis
     def query_utilization(self):
         """

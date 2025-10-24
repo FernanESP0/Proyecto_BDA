@@ -17,10 +17,10 @@ Principles
 from tqdm import tqdm # type: ignore
 import logging
 from datetime import datetime
-from pygrametl.datasources import SQLSource, CSVSource # type: ignore
+from pygrametl.datasources import CSVSource # type: ignore
 import calendar
 from pygrametl.tables import CachedDimension # type: ignore
-from typing import Iterator, Tuple, Set
+from typing import Iterator
 import pandas as pd
 import numpy as np
 
@@ -54,10 +54,13 @@ def build_dateCode(date: datetime) -> str:
 
 def get_aircrafts(aircraft_src: CSVSource, postflighreports_df: pd.DataFrame) -> Iterator:
     """
-    Adapt raw aircraft CSV rows to the Aircrafts dimension schema.
+    Adapt raw aircraft CSV rows (and supplement with registrations from reports)
+    to the Aircrafts dimension schema.
 
     Parameters
     - aircraft_src: pygrametl CSVSource over the aircraft lookup.
+    - postflighreports_df: pandas DataFrame of post-flight reports used to
+      capture aircraft registration codes not present in the CSV.
 
     Yields
     - Dicts containing the natural key and attributes expected by the dimension.
@@ -296,25 +299,28 @@ def get_aircrafts_monthly_snapshot(
 def get_logbooks(
     post_flightreports_df: pd.DataFrame,
     maint_src: pd.DataFrame,
-    months_dim: CachedDimension, 
-    aircrafts_dim: CachedDimension, 
+    months_dim: CachedDimension,
+    aircrafts_dim: CachedDimension,
 ) -> Iterator:
     """
-    Aggregate logbook entries by (year, month, aircraft, role, airport).
+    Aggregate logbook entries by year/month/airport/aircraft.
 
     Parameters
-    - technical_logbooks_df: DataFrame with reportingdate, registration, role.
-    - months_dim: CachedDimension for Month_ID.
-    - aircrafts_dim: CachedDimension for Aircraft_ID.
-    - reporters_dim: CachedDimension for Reporter_ID.
+    - post_flightreports_df: DataFrame containing post-flight reports with
+        reporting dates and reporter identifiers.
+    - maint_src: Maintenance personnel DataFrame that maps reporter id to airport.
+    - months_dim: CachedDimension used to resolve Month_ID for each (month, year).
+    - aircrafts_dim: CachedDimension used to resolve Aircraft_ID by registration.
 
     Yields
-    - Fact rows with Month_ID, Aircraft_ID, Log_Count, Airport.
+    - Dicts representing rows for the Logbooks fact table with keys:
+        'Month_ID', 'Aircraft_ID', 'Airport', 'Log_Count'.
     """
+
     # Convert both key columns to string (object) type
     post_flightreports_df['reporteurid'] = post_flightreports_df['reporteurid'].astype(str)
     maint_src['reporteurid'] = maint_src['reporteurid'].astype(str)
-    
+
     merged_df = post_flightreports_df.merge(
         maint_src[['reporteurid', 'airport']],
         on=['reporteurid'],
@@ -325,18 +331,18 @@ def get_logbooks(
 
     print("Aggregating logbook entries (pandas)...")
     agg_df = (
-        merged_df.groupby(['year', 'month_num', 'airport', 'aircraftregistration']) 
+        merged_df.groupby(['year', 'month_num', 'airport', 'aircraftregistration'])
         .size()
         .reset_index()
         .rename(columns={0: 'Log_Count'})
     )
-    
+
     print("Yielding final logbook facts...")
     for row in tqdm(agg_df.to_dict('records'), desc="Finalizing Logbooks"):
         try:
             month_id = months_dim.lookup({'Month_Num': row['month_num'], 'Year': row['year']})
             aircraft_id = aircrafts_dim.lookup({'Aircraft_Registration_Code': row['aircraftregistration']})
-            
+
             yield {
                 'Month_ID': month_id,
                 'Aircraft_ID': aircraft_id,
@@ -344,7 +350,9 @@ def get_logbooks(
                 'Log_Count': row['Log_Count']
             }
         except KeyError as e:
-            logging.warning(f"Skipping aggregated logbook record due to missing dimension key: {e}. Row: {row}")
+            logging.warning(
+                f"Skipping aggregated logbook record due to missing dimension key: {e}. Row: {row}"
+            )
 
 
 # =============================================================================

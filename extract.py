@@ -81,7 +81,7 @@ def get_flights_df() -> pd.DataFrame:
 
     Returns
     - pandas DataFrame with scheduled and actual timestamps parsed as datetimes,
-      plus cancellation and delay code fields.
+      plus cancellation, aircraft registration, and delay code fields.
     """
     query = 'SELECT id, aircraftregistration, scheduleddeparture, scheduledarrival, actualdeparture, actualarrival, cancelled, delaycode FROM "AIMS".flights'
     return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival', 'actualdeparture', 'actualarrival'])
@@ -92,7 +92,7 @@ def get_maintenance_info_df() -> pd.DataFrame:
     Extract maintenance windows with schedule and programmability flags.
 
     Returns
-    - pandas DataFrame with scheduled timestamps (parsed as datetime) and the
+    - pandas DataFrame with aircraft registration, scheduled timestamps (parsed as datetime) and the
       'programmed' boolean flag.
     """
     query = 'SELECT aircraftregistration, scheduleddeparture, scheduledarrival, programmed FROM "AIMS".maintenance'
@@ -104,7 +104,7 @@ def get_postflightreports_df() -> pd.DataFrame:
     Extract post-flight report identifiers and links to technical logbook orders.
 
     Returns
-    - pandas DataFrame with columns pfrid, aircraftregistration, tlborder.
+    - pandas DataFrame with columns pfrid, aircraftregistration, reportingdate, reporteurid, reporteurclass.
     """
     query = 'SELECT pfrid, aircraftregistration, reportingdate, reporteurid, reporteurclass FROM "AMOS".postflightreports'
     return pd.read_sql(query, conn, parse_dates=['reportingdate'])
@@ -132,6 +132,17 @@ def get_aircrafts_per_manufacturer() -> dict[str, list[str]]:
 
 
 def query_utilization_baseline():
+    """
+    Run a baseline utilization query against the operational source schema.
+
+    This query combines flights and maintenance windows to compute per-manufacturer
+    yearly aggregates such as flight hours (FH), takeoffs, maintenance days (ADOSS/ADOSU),
+    delay/cancellation ratios and derived utilization metrics.
+
+    Returns
+    - List[tuple]: result rows as returned by cursor.fetchall(); each tuple aligns
+      with the SELECT list in the SQL statement.
+    """
     aircrafts = get_aircrafts_per_manufacturer()
     cur = conn.cursor()
     cur.execute(f"""
@@ -201,7 +212,7 @@ def query_utilization_baseline():
             ROUND(SUM(a.scheduledOutOfService)/COUNT(DISTINCT a.aircraftregistration), 2) AS ADOSS,
             ROUND(SUM(a.unscheduledOutOfService)/COUNT(DISTINCT a.aircraftregistration), 2) AS ADOSU,
             ROUND((SUM(a.scheduledOutOfService)+SUM(a.unscheduledOutOfService))/COUNT(DISTINCT a.aircraftregistration), 2) AS ADOS,
-            365-ROUND((SUM(a.scheduledOutOfService)+SUM(a.unscheduledOutOfService))/COUNT(DISTINCT a.aircraftregistration), 2) AS ADIS, -- This assumes a period of one year (as in the group by)
+            365-ROUND((SUM(a.scheduledOutOfService)+SUM(a.unscheduledOutOfService))/COUNT(DISTINCT a.aircraftregistration), 2) AS ADIS,
             ROUND(ROUND(SUM(a.flightHours)/COUNT(DISTINCT a.aircraftregistration), 2)/((365-ROUND((SUM(a.scheduledOutOfService)+SUM(a.unscheduledOutOfService))/COUNT(DISTINCT a.aircraftregistration), 2))*24), 2) AS DU,
             ROUND(ROUND(SUM(a.flightCycles)/COUNT(DISTINCT a.aircraftregistration), 2)/(365-ROUND((SUM(a.scheduledOutOfService)+SUM(a.unscheduledOutOfService))/COUNT(DISTINCT a.aircraftregistration), 2)), 2) AS DC,
             100*ROUND(SUM(delays)/ROUND(SUM(a.flightCycles), 2), 4) AS DYR,
@@ -218,6 +229,14 @@ def query_utilization_baseline():
 
 
 def query_reporting_baseline():
+    """
+    Run a baseline reporting query that measures report counts and normalizes them
+    by utilization metrics (flight hours and flight cycles).
+
+    Returns
+    - List[tuple]: rows containing manufacturer, year, RRh (reports per 1000 FH),
+      and RRc (reports per 100 cycles).
+    """
     aircrafts = get_aircrafts_per_manufacturer()
     cur = conn.cursor()
     cur.execute(f"""
@@ -266,6 +285,13 @@ def query_reporting_baseline():
 
 
 def query_reporting_per_role_baseline():
+    """
+    Run a baseline reporting-by-role query. This computes reporting rates per
+    reporter role (e.g., PIREP vs MAREP) normalized by utilization metrics.
+
+    Returns
+    - List[tuple]: rows containing manufacturer, year, role, RRh, RRc.
+    """
     aircrafts = get_aircrafts_per_manufacturer()
     cur = conn.cursor()
     cur.execute(f"""
