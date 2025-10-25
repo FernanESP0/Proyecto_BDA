@@ -375,7 +375,7 @@ def check_and_fix_1st_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     # Condition: (arr and dep are not null) AND (arr < dep)
     cond = (df['actualarrival'].notnull()) & (df['actualdeparture'].notnull()) & (df['actualarrival'] < df['actualdeparture'])
 
-    # Log violations
+    # Print number of violations
     violations = df[cond]
     if not violations.empty:
         print(f"BR1 Violation: Found {len(violations)} flights with arrival before departure. Swapping...")
