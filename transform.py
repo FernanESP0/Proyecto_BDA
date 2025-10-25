@@ -379,8 +379,6 @@ def check_and_fix_1st_BR(flights_df: pd.DataFrame) -> pd.DataFrame:
     violations = df[cond]
     if not violations.empty:
         print(f"BR1 Violation: Found {len(violations)} flights with arrival before departure. Swapping...")
-        for flight_id in violations['id']:
-            logging.info(f"BR1 Violation: Swapping arrival and departure for flight id: {flight_id}.")
 
     # Execute the swap
     df.loc[cond, ['actualarrival', 'actualdeparture']] = df.loc[cond, ['actualdeparture', 'actualarrival']].values
