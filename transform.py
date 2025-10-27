@@ -191,7 +191,7 @@ def get_flights_operations_daily(
     
     # CFC (Cancelled Flight Count)
     df['CFC'] = np.where(is_cancelled, 1, 0)
-
+   
     # --- Delay Logic ---
     arrival_delay_minutes = (df['actualarrival'] - df['scheduledarrival']).dt.total_seconds() / 60.0 # type: ignore[attr-defined]
 

@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
-        aircraft_manuf_info_cp = extract.get_aircraft_manufacturer_info()  # Copy for cleaning
+        aircraft_manuf_info_cp = extract.get_aircraft_manufacturer_info()  # Copy for cleaning as it is an iterator
         maint_personnel_info = extract.get_maintenance_personnel()
         print("CSV sources extracted.")
 
