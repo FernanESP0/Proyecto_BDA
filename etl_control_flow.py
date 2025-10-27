@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
         print("Extracting data from PostgreSQL sources...")
         flights_df = extract.get_flights_df()
-        maintenance_df = extract.get_maintenance_info_df()
+        maintenance_df = extract.get_maintenance_df()
         postflightreports_df = extract.get_postflightreports_df()
         print("PostgreSQL sources extracted.")
 

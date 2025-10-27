@@ -17,7 +17,7 @@ Conventions
 from pathlib import Path
 import psycopg2 # type: ignore
 import pandas as pd  # type: ignore
-from pygrametl.datasources import CSVSource, SQLSource  # type: ignore
+from pygrametl.datasources import CSVSource # type: ignore
 
 # Connect to the PostgreSQL source
 path = Path("db_conf.txt")
@@ -87,7 +87,7 @@ def get_flights_df() -> pd.DataFrame:
     return pd.read_sql(query, conn, parse_dates=['scheduleddeparture', 'scheduledarrival', 'actualdeparture', 'actualarrival'])
 
 
-def get_maintenance_info_df() -> pd.DataFrame:
+def get_maintenance_df() -> pd.DataFrame:
     """
     Extract maintenance windows with schedule and programmability flags.
 
