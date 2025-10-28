@@ -49,12 +49,16 @@ if __name__ == '__main__':
         else:
             print("User selected: NO. Skipping data cleaning.")
 
+        # Be aware to have "aircraft-manufaturerinfo-lookup.csv" and "maintenance_personnel.csv" files 
+        # in the working directory containing all .py scripts before running the ETL process.
         print("Extracting data from CSV sources...")
         aircraft_manuf_info = extract.get_aircraft_manufacturer_info()
         aircraft_manuf_info_cp = extract.get_aircraft_manufacturer_info()  # Copy for cleaning as it is an iterator
         maint_personnel_info = extract.get_maintenance_personnel()
         print("CSV sources extracted.")
-
+        
+        # Be aware to have access to the PostgreSQL instance before running the ETL process
+        # by checking that db_conf.txt file contains the correct connection parameters.
         print("Extracting data from PostgreSQL sources...")
         print("This may take a few moments, more or less depending on quality of your connection...")
         flights_df = extract.get_flights_df()
